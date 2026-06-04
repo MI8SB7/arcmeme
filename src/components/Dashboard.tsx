@@ -45,8 +45,8 @@ export const Dashboard: React.FC = () => {
       if (!token) return false;
       // Exclude if contract is in DEV_CONTRACTS (case-insensitive)
       if (DEV_CONTRACTS.map((c) => c.toLowerCase()).includes(token.contractAddress.toLowerCase())) return false;
-      // Exclude if token symbol is missing or empty
-      if (!token.symbol || token.symbol.trim() === '') return false;
+      // Exclude if token symbol is missing, empty, or just a dollar sign
+      if (!token.symbol || token.symbol.trim() === '' || token.symbol.trim() === '$') return false;
       return true;
     });
   }, [sortedActivities, assets]);

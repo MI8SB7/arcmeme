@@ -441,8 +441,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Real wallet hooks
-  const { address, isConnected, chain } = useAccount();
+  const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+
+  // -------------------------------------------------
+  // Profile handling – run when a wallet connects
+  // -------------------------------------------------
+  // Import the service lazily to avoid circular dependencies in the UI bundle
+  // (the service itself only uses the Supabase client).
+  // The effect runs once the wallet address is known.
+  useEffect(() => {
+    if (!isConnected || !address) return;
+    // Dynamically import to keep the initial bundle small
+    import('../services/profileService')
+      .then(async ({ getProfileByWallet, createProfile }) => {
+        const lowerAddress = address.toLowerCase();
+        try {
+          const profile = await getProfileByWallet(lowerAddress);
+          if (!profile) {
+            // Simple default username – can be refined later
+            const defaultUsername = `user_${lowerAddress.slice(2, 8)}`;
+            await createProfile({
+              wallet_address: lowerAddress,
+              username: defaultUsername,
+              avatar_url: '',
+              bio: ''
+            });
+            console.log('🟢 Created profile for', lowerAddress);
+          } else {
+            console.log('🔵 Profile already exists for', lowerAddress);
+          }
+        } catch (err) {
+          console.error('Profile service error', err);
+        }
+      })
+      .catch(e => console.error('Failed to load profile service', e));
+  }, [isConnected, address]);
+  const { disconnect: disconnectWallet } = useDisconnect();
 
   // Profile Management
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>(() => {
@@ -479,7 +514,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAssets(prev => [token, ...prev]);
   }, []);
 
-  // USDC balance — on Arc, USDC is the native gas token (6 decimals)
+  // USDC balance
   const { data: balanceData, isLoading: balanceLoading } = useBalance({
     address: address,
     query: {
@@ -504,9 +539,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSelectedAsset,
     isWalletConnected: isConnected,
     walletAddress: address,
-    chainName: chain?.name,
-    chainId: chain?.id,
-    disconnectWallet: disconnect,
+    chainName: 'Arc Testnet',
+    chainId: undefined,
+    disconnectWallet,
     usdcBalance,
     usdcBalanceLoading: balanceLoading,
     assets: visibleAssets,
@@ -529,9 +564,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedAsset,
     isConnected,
     address,
-    chain?.name,
-    chain?.id,
-    disconnect,
+    disconnectWallet,
     usdcBalance,
     balanceLoading,
     assets,
