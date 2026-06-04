@@ -442,7 +442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Real wallet hooks
   const { address, isConnected } = useAccount();
-  const { disconnect } = useDisconnect();
+  const { disconnect: disconnectWallet } = useDisconnect();
 
   // -------------------------------------------------
   // Profile handling – run when a wallet connects
@@ -477,7 +477,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
       .catch(e => console.error('Failed to load profile service', e));
   }, [isConnected, address]);
-  const { disconnect: disconnectWallet } = useDisconnect();
+
 
   // Profile Management
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>(() => {
