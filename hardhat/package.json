@@ -1,0 +1,17 @@
+{
+  "name": "arcmeme-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for ArcMeme",
+  "scripts": {
+    "test": "hardhat test",
+    "compile": "hardhat compile"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.4"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2",
+    "dotenv": "^17.4.2"
+  }
+}

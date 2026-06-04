@@ -1,0 +1,5 @@
+.exit
+signers[0].address
+process.env.PRIVATE_KEY ? "FOUND" : "MISSING"
+signers.length
+const signers = await ethers.getSigners()
