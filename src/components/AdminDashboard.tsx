@@ -1,8 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
 import { ShieldAlert, Users, Activity, Rocket, ArrowRightLeft, Lock } from 'lucide-react';
 import { APP_CONFIG } from '../config/constants';
 import { useAppContext } from '../context/AppContext';
+import { supabase } from '../lib/supabase';
 
 export const AdminDashboard: React.FC = () => {
   const { address, isConnected } = useAccount();
@@ -12,22 +13,52 @@ export const AdminDashboard: React.FC = () => {
     ? address.toLowerCase() === APP_CONFIG.ADMIN_WALLET_ADDRESS.toLowerCase()
     : false;
 
+  // ---------------------------------------------------------------------------
+  // Trade metrics from Supabase trade_events (canonical source after migration).
+  // ---------------------------------------------------------------------------
+  const [tradeMetrics, setTradeMetrics] = useState<{
+    totalTrades: number;
+    tradeUsers: string[];
+    activeTradeUsers: string[];
+  }>({ totalTrades: 0, tradeUsers: [], activeTradeUsers: [] });
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let isMounted = true;
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('trade_events')
+          .select('trader_address, timestamp');
+        if (error || !data || !isMounted) return;
+        const SEVEN_DAYS_SEC = 7 * 24 * 60 * 60;
+        const nowSec = Math.floor(Date.now() / 1000);
+        setTradeMetrics({
+          totalTrades: data.length,
+          tradeUsers: data.map(r => r.trader_address.toLowerCase()),
+          activeTradeUsers: data
+            .filter(r => r.timestamp && (nowSec - Number(r.timestamp)) <= SEVEN_DAYS_SEC)
+            .map(r => r.trader_address.toLowerCase()),
+        });
+      } catch (e) {
+        console.error('Failed to load trade metrics from Supabase', e);
+      }
+    })();
+    return () => { isMounted = false; };
+  }, [isAdmin]);
+
   // Calculate metrics
   const metrics = useMemo(() => {
     if (!isAdmin) return { totalUsers: 0, activeUsers: 0, totalTokens: 0, totalTransactions: 0 };
 
     const uniqueUsers = new Set<string>();
     const activeUsers = new Set<string>();
-    let totalTrades = 0;
-
     const SEVEN_DAYS_SEC = 7 * 24 * 60 * 60;
     const nowSec = Math.floor(Date.now() / 1000);
 
     // 1. Add users from creator profiles
     Object.keys(creatorProfiles).forEach(wallet => {
       uniqueUsers.add(wallet.toLowerCase());
-      // Profiles don't have a reliable interaction timestamp for "active",
-      // we'll rely on trades and token launches to mark them active.
     });
 
     // 2. Add users from token launches
@@ -35,7 +66,6 @@ export const AdminDashboard: React.FC = () => {
       if (asset.creatorHandle) {
         const handle = asset.creatorHandle.toLowerCase();
         uniqueUsers.add(handle);
-        
         const launchSec = Math.floor(new Date(asset.launchDate).getTime() / 1000);
         if (nowSec - launchSec <= SEVEN_DAYS_SEC) {
           activeUsers.add(handle);
@@ -43,41 +73,17 @@ export const AdminDashboard: React.FC = () => {
       }
     });
 
-    // 3. Add users and transactions from trades
-    // We iterate over localStorage to find all arc_trades_* keys
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('arc_trades_')) {
-        try {
-          const stored = localStorage.getItem(key);
-          if (stored) {
-            const trades = JSON.parse(stored);
-            if (Array.isArray(trades)) {
-              totalTrades += trades.length;
-              trades.forEach((trade: any) => {
-                if (trade.traderAddress) {
-                  const trader = trade.traderAddress.toLowerCase();
-                  uniqueUsers.add(trader);
-                  if (trade.timestamp && (nowSec - trade.timestamp <= SEVEN_DAYS_SEC)) {
-                    activeUsers.add(trader);
-                  }
-                }
-              });
-            }
-          }
-        } catch (e) {
-          console.error(`Error parsing trades for key ${key}`, e);
-        }
-      }
-    }
+    // 3. Add users from Supabase trade_events (replaces localStorage arc_trades_* loop)
+    tradeMetrics.tradeUsers.forEach(trader => uniqueUsers.add(trader));
+    tradeMetrics.activeTradeUsers.forEach(trader => activeUsers.add(trader));
 
     return {
       totalUsers: uniqueUsers.size,
       activeUsers: activeUsers.size,
       totalTokens: assets.length,
-      totalTransactions: assets.length + totalTrades // Launches + trades
+      totalTransactions: assets.length + tradeMetrics.totalTrades
     };
-  }, [isAdmin, assets, creatorProfiles]);
+  }, [isAdmin, assets, creatorProfiles, tradeMetrics]);
 
   if (!isConnected || !isAdmin) {
     return (

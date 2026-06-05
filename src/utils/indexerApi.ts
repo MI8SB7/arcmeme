@@ -1,5 +1,4 @@
-// d:\arcmeme\src\utils\indexerApi.ts
-// Mock API layer wrapping localStorage to simulate a future backend/indexer.
+import { supabase } from '../lib/supabase';
 
 export interface TradeEvent {
   marketAddress: string;
@@ -38,27 +37,32 @@ export const indexerApi = {
    * Single Source of Truth for the entire ecosystem.
    */
   addTradeEvent: async (tradeEvent: TradeEvent): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        try {
-          const historyKey = `arc_trades_${tradeEvent.marketAddress.toLowerCase()}`;
-          console.log(`[STORAGE AUDIT] WRITE -> Key: ${historyKey}`);
-          
-          const existingHistoryRaw = localStorage.getItem(historyKey);
-          const existingHistory: TradeEvent[] = existingHistoryRaw ? JSON.parse(existingHistoryRaw) : [];
-          console.log(`[STORAGE AUDIT] WRITE -> Pre-append count: ${existingHistory.length}`);
-          
-          existingHistory.unshift(tradeEvent);
-          const trimmedHistory = existingHistory.slice(0, 500);
-          
-          localStorage.setItem(historyKey, JSON.stringify(trimmedHistory));
-          resolve();
-        } catch (error) {
-          console.error("indexerApi.addTradeEvent Error:", error);
-          reject(error);
-        }
-      }, 50);
-    });
+    try {
+      const dbRow = {
+        market_address: tradeEvent.marketAddress,
+        token_address: tradeEvent.tokenAddress,
+        token_symbol: tradeEvent.tokenSymbol,
+        trader_address: tradeEvent.traderAddress,
+        trade_type: tradeEvent.tradeType,
+        usdc_amount: tradeEvent.usdcAmount,
+        token_amount: tradeEvent.tokenAmount,
+        spot_price: tradeEvent.spotPrice,
+        market_cap: tradeEvent.marketCap,
+        liquidity: tradeEvent.liquidity,
+        usdc_reserve: tradeEvent.usdcReserve,
+        token_reserve: tradeEvent.tokenReserve,
+        timestamp: tradeEvent.timestamp,
+        block_timestamp: tradeEvent.blockTimestamp,
+        block_number: tradeEvent.blockNumber,
+        tx_hash: tradeEvent.txHash,
+      };
+      
+      const { error } = await supabase.from('trade_events').insert([dbRow]);
+      if (error) throw error;
+    } catch (error) {
+      console.error("indexerApi.addTradeEvent Error:", error);
+      throw error;
+    }
   },
 
   /**
@@ -66,150 +70,180 @@ export const indexerApi = {
    * Returns data formatted for lightweight-charts: { time, value }
    */
   getChartData: async (marketAddress: string): Promise<{ time: number, value: number }[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const historyKey = `arc_trades_${marketAddress.toLowerCase()}`;
-        console.log(`[STORAGE AUDIT] READ -> Key: ${historyKey}`);
-        
-        const raw = localStorage.getItem(historyKey);
-        if (!raw) {
-          console.log(`[STORAGE AUDIT] READ -> Key missing, returning []`);
-          return resolve([]);
-        }
+    try {
+      const { data, error } = await supabase
+        .from('trade_events')
+        .select('timestamp, block_timestamp, spot_price')
+        .eq('market_address', marketAddress)
+        .order('timestamp', { ascending: true });
 
-        const history: TradeEvent[] = JSON.parse(raw);
-        console.log(`[STORAGE AUDIT] READ -> Post-parse count: ${history.length}`);
-        
-        // Map to lightweight-charts format (sorted oldest to newest)
-        const sortedHistory = [...history].sort((a, b) => a.timestamp - b.timestamp);
-        
-        const chartPoints = sortedHistory.map(trade => ({
-          time: trade.blockTimestamp > 0 ? trade.blockTimestamp : trade.timestamp,
-          value: trade.spotPrice
-        }));
+      if (error) throw error;
+      if (!data) return [];
 
-        console.log("RAW_TRADES", history);
-        console.log("MAPPED_TRADES", chartPoints);
-        console.log("RETURNED_ARRAY", chartPoints);
-
-        resolve(chartPoints);
-      }, 50);
-    });
+      return data.map(trade => ({
+        time: trade.block_timestamp > 0 ? Number(trade.block_timestamp) : Number(trade.timestamp),
+        value: Number(trade.spot_price)
+      }));
+    } catch (error) {
+      console.error("indexerApi.getChartData Error:", error);
+      return [];
+    }
   },
 
   /**
    * Retrieves the most recent market stats (price, cap, liquidity).
    */
   getMarketStats: async (marketAddress: string): Promise<MarketStats | null> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const historyKey = `arc_trades_${marketAddress.toLowerCase()}`;
-        const raw = localStorage.getItem(historyKey);
-        if (!raw) return resolve(null);
+    try {
+      const { data, error } = await supabase
+        .from('trade_events')
+        .select('spot_price, market_cap, liquidity')
+        .eq('market_address', marketAddress)
+        .order('timestamp', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-        const history: TradeEvent[] = JSON.parse(raw);
-        if (history.length === 0) return resolve(null);
+      if (error) throw error;
+      if (!data) return null;
 
-        // First item is newest
-        const latest = history[0];
-        resolve({
-          price: latest.spotPrice,
-          marketCap: latest.marketCap,
-          liquidity: latest.liquidity
-        });
-      }, 50);
-    });
+      return {
+        price: Number(data.spot_price),
+        marketCap: Number(data.market_cap),
+        liquidity: Number(data.liquidity)
+      };
+    } catch (error) {
+      console.error("indexerApi.getMarketStats Error:", error);
+      return null;
+    }
   },
 
   /**
    * Retrieves the recent trade history for a specific market.
    */
   getRecentTrades: async (marketAddress: string): Promise<TradeEvent[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const historyKey = `arc_trades_${marketAddress.toLowerCase()}`;
-        const existingHistoryRaw = localStorage.getItem(historyKey);
-        const existingHistory: TradeEvent[] = existingHistoryRaw ? JSON.parse(existingHistoryRaw) : [];
-        resolve(existingHistory);
-      }, 50);
-    });
+    try {
+      const { data, error } = await supabase
+        .from('trade_events')
+        .select('*')
+        .eq('market_address', marketAddress)
+        .order('timestamp', { ascending: false })
+        .limit(500);
+
+      if (error) throw error;
+      if (!data) return [];
+
+      return data.map(row => ({
+        marketAddress: row.market_address,
+        tokenAddress: row.token_address,
+        tokenSymbol: row.token_symbol,
+        traderAddress: row.trader_address,
+        tradeType: row.trade_type as 'buy' | 'sell',
+        usdcAmount: row.usdc_amount,
+        tokenAmount: row.token_amount,
+        spotPrice: Number(row.spot_price),
+        marketCap: Number(row.market_cap),
+        liquidity: Number(row.liquidity),
+        usdcReserve: row.usdc_reserve,
+        tokenReserve: row.token_reserve,
+        timestamp: Number(row.timestamp),
+        blockTimestamp: Number(row.block_timestamp),
+        blockNumber: Number(row.block_number),
+        txHash: row.tx_hash
+      }));
+    } catch (error) {
+      console.error("indexerApi.getRecentTrades Error:", error);
+      return [];
+    }
   },
 
   /**
    * Retrieves all trades for a specific user across ALL markets.
    */
-  getUserTrades: async (userAddress: string, registryMarkets: string[]): Promise<TradeEvent[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const userTrades: TradeEvent[] = [];
-        for (const market of registryMarkets) {
-          const historyKey = `arc_trades_${market.toLowerCase()}`;
-          const raw = localStorage.getItem(historyKey);
-          if (raw) {
-            const history: TradeEvent[] = JSON.parse(raw);
-            const filtered = history.filter(t => t.traderAddress.toLowerCase() === userAddress.toLowerCase());
-            userTrades.push(...filtered);
-          }
-        }
-        userTrades.sort((a, b) => b.timestamp - a.timestamp); // Newest first
-        resolve(userTrades);
-      }, 50);
-    });
+  getUserTrades: async (userAddress: string, _registryMarkets?: string[]): Promise<TradeEvent[]> => {
+    try {
+      // With Supabase, we can just query by trader_address directly across all markets!
+      const { data, error } = await supabase
+        .from('trade_events')
+        .select('*')
+        .eq('trader_address', userAddress)
+        .order('timestamp', { ascending: false });
+
+      if (error) throw error;
+      if (!data) return [];
+
+      return data.map(row => ({
+        marketAddress: row.market_address,
+        tokenAddress: row.token_address,
+        tokenSymbol: row.token_symbol,
+        traderAddress: row.trader_address,
+        tradeType: row.trade_type as 'buy' | 'sell',
+        usdcAmount: row.usdc_amount,
+        tokenAmount: row.token_amount,
+        spotPrice: Number(row.spot_price),
+        marketCap: Number(row.market_cap),
+        liquidity: Number(row.liquidity),
+        usdcReserve: row.usdc_reserve,
+        tokenReserve: row.token_reserve,
+        timestamp: Number(row.timestamp),
+        blockTimestamp: Number(row.block_timestamp),
+        blockNumber: Number(row.block_number),
+        txHash: row.tx_hash
+      }));
+    } catch (error) {
+      console.error("indexerApi.getUserTrades Error:", error);
+      return [];
+    }
   },
 
   /**
    * Calculates the cost basis (USDC spent - USDC received) for a user on a specific market.
    */
   getUserCostBasis: async (userAddress: string, marketAddress: string): Promise<number> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const historyKey = `arc_trades_${marketAddress.toLowerCase()}`;
-        const raw = localStorage.getItem(historyKey);
-        if (!raw) return resolve(0);
+    try {
+      const { data, error } = await supabase
+        .from('trade_events')
+        .select('trade_type, usdc_amount')
+        .eq('market_address', marketAddress)
+        .eq('trader_address', userAddress);
 
-        const history: TradeEvent[] = JSON.parse(raw);
-        let costBasis = 0;
+      if (error) throw error;
+      if (!data) return 0;
 
-        for (const trade of history) {
-          if (trade.traderAddress.toLowerCase() === userAddress.toLowerCase()) {
-            const usdc = parseFloat(trade.usdcAmount);
-            if (!isNaN(usdc)) {
-              if (trade.tradeType === 'buy') {
-                costBasis += usdc;
-              } else {
-                costBasis -= usdc;
-              }
-            }
+      let costBasis = 0;
+      for (const trade of data) {
+        const usdc = parseFloat(trade.usdc_amount);
+        if (!isNaN(usdc)) {
+          if (trade.trade_type === 'buy') {
+            costBasis += usdc;
+          } else {
+            costBasis -= usdc;
           }
         }
-        resolve(costBasis);
-      }, 50);
-    });
+      }
+      return costBasis;
+    } catch (error) {
+      console.error("indexerApi.getUserCostBasis Error:", error);
+      return 0;
+    }
   },
 
   /**
    * Records a snapshot of the user's total portfolio value.
    */
   recordPortfolioSnapshot: async (wallet: string, portfolioValue: number): Promise<void> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        if (!wallet || portfolioValue <= 0) return resolve();
+    try {
+      if (!wallet || portfolioValue <= 0) return;
 
-        const key = `arc_snapshot_${wallet.toLowerCase()}`;
-        const raw = localStorage.getItem(key);
-        const snapshots: PortfolioSnapshot[] = raw ? JSON.parse(raw) : [];
+      const dbRow = {
+        wallet: wallet.toLowerCase(),
+        timestamp: Math.floor(Date.now() / 1000),
+        portfolio_value: portfolioValue
+      };
 
-        snapshots.push({
-          wallet: wallet.toLowerCase(),
-          timestamp: Math.floor(Date.now() / 1000),
-          portfolioValue
-        });
-
-        if (snapshots.length > 30) snapshots.shift();
-
-        localStorage.setItem(key, JSON.stringify(snapshots));
-        resolve();
-      }, 10);
-    });
+      const { error } = await supabase.from('portfolio_snapshots').insert([dbRow]);
+      if (error) throw error;
+    } catch (error) {
+      console.error("indexerApi.recordPortfolioSnapshot Error:", error);
+    }
   }
 };

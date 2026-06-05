@@ -6,6 +6,15 @@ import { formatUnits } from 'viem';
 import { type MemeAsset, type ActivityEvent } from '../types';
 import { ethers } from 'ethers';
 import { calculateSpotPrice } from '../trading';
+import { insertToken, getAllTokens, deactivateToken as deactivateTokenService, updateTokenStats } from '../services/tokenService';
+
+// ---------------------------------------------------------------------------
+// Module-level caches — persist for the browser session lifetime.
+// Token metadata (name, symbol, market address) is IMMUTABLE after creation.
+// Reserves change only when trades occur — used to gate eth_getLogs calls.
+// ---------------------------------------------------------------------------
+const staticTokenCache = new Map<string, { name: string; symbol: string; marketAddr: string }>();
+const reservesCache = new Map<string, { usdc: bigint; token: bigint; trades: any[] }>();
 
 class AppProviderErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean, error: any}> {
   constructor(props: {children: ReactNode}) {
@@ -137,9 +146,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Log asset counts for verification
   useEffect(() => {
-    console.log('Total assets loaded from arc_registry:', assets.length);
-    console.log('Visible assets after DEV_CONTRACTS filtering:', visibleAssets.length);
-  }, [assets, visibleAssets]);
+      console.log('Total assets loaded from arc_registry:', assets.length);
+      console.log('Visible assets after DEV_CONTRACTS filtering:', visibleAssets.length);
+      // Load tokens from Supabase once on mount
+      (async () => {
+        const supabaseTokens = await getAllTokens();
+        console.log('Token loaded from Supabase:', supabaseTokens.length);
+        // Merge with existing assets, dedup by contract_address
+        setAssets(prev => {
+          const existingMap = new Map(prev.map(a => [a.contractAddress?.toLowerCase(), a]));
+          supabaseTokens.forEach(tok => {
+            const addr = tok.contractAddress?.toLowerCase();
+            if (addr && !existingMap.has(addr)) {
+              existingMap.set(addr, tok as any);
+            }
+          });
+          return Array.from(existingMap.values());
+        });
+      })();
+  }, []);
 
   const [activities, setActivities] = useState<ActivityEvent[]>(() => {
     try {
@@ -242,25 +267,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const updatedAssets: MemeAsset[] = [];
         
         for (const tokenAddr of tokenAddresses) {
-          const marketAddr = await factoryContract.tokenToMarket(tokenAddr);
-          
-          const tokenContract = new ethers.Contract(
-            tokenAddr,
-            [
+          // Guard: skip dev/test orphan tokens whose factory entries may be invalid.
+          if (DEV_CONTRACTS.includes(tokenAddr.toLowerCase())) continue;
+
+          // -----------------------------------------------------------------
+          // STATIC CACHE — name, symbol, marketAddr are immutable after
+          // creation. Fetched once per session, never queried again.
+          // Saves: 3 eth_call per token per cycle after first sync.
+          // -----------------------------------------------------------------
+          const cacheKey = tokenAddr.toLowerCase();
+          const cachedStatic = staticTokenCache.get(cacheKey);
+          let name: string, symbol: string, marketAddr: string;
+
+          if (cachedStatic) {
+            ({ name, symbol, marketAddr } = cachedStatic);
+          } else {
+            // First time seeing this token — fetch from chain and cache.
+            let resolvedMarket: string;
+            try {
+              resolvedMarket = await factoryContract.tokenToMarket(tokenAddr);
+            } catch (err) {
+              console.warn(`tokenToMarket() reverted for ${tokenAddr} — skipping`, err);
+              continue;
+            }
+            if (!resolvedMarket || resolvedMarket === ethers.ZeroAddress) {
+              console.warn(`tokenToMarket() returned address(0) for ${tokenAddr} — skipping`);
+              continue;
+            }
+            const tokenContract = new ethers.Contract(tokenAddr, [
               "function name() view returns (string)",
               "function symbol() view returns (string)"
-            ],
-            provider
-          );
-          
-          let name = '';
-          let symbol = '';
-          try {
-            name = await tokenContract.name();
-            symbol = await tokenContract.symbol();
-          } catch {
-            name = 'Unknown';
-            symbol = 'UNKN';
+            ], provider);
+            let fetchedName = 'Unknown', fetchedSymbol = 'UNKN';
+            try {
+              fetchedName = await tokenContract.name();
+              fetchedSymbol = await tokenContract.symbol();
+            } catch {}
+            staticTokenCache.set(cacheKey, {
+              name: fetchedName, symbol: fetchedSymbol, marketAddr: resolvedMarket
+            });
+            name = fetchedName;
+            symbol = fetchedSymbol;
+            marketAddr = resolvedMarket;
           }
 
           const marketContract = new ethers.Contract(
@@ -274,6 +322,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             provider
           );
 
+          // -----------------------------------------------------------------
+          // RESERVES — always fetched (2 eth_calls). These reflect trade state.
+          // -----------------------------------------------------------------
           let reserveUSDC = 0n;
           let reserveToken = 0n;
           try {
@@ -283,72 +334,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn("Reserves failed", err);
           }
 
-          let buyLogs: any[] = [];
-          let sellLogs: any[] = [];
-          try {
-            buyLogs = await marketContract.queryFilter(marketContract.filters.Buy(), fromBlock, 'latest');
-            sellLogs = await marketContract.queryFilter(marketContract.filters.Sell(), fromBlock, 'latest');
-          } catch (err) {
-            console.warn("Failed to query market trade logs for", tokenAddr, err);
-          }
+          // -----------------------------------------------------------------
+          // RESERVES CACHE — if reserves unchanged, skip eth_getLogs entirely.
+          // No trades occurred → reuse previous trade list from cache.
+          // Saves: 2 eth_getLogs per token per cycle when market is idle.
+          // -----------------------------------------------------------------
+          const prevReserves = reservesCache.get(cacheKey);
+          let allTrades: any[];
 
-          const allTrades: any[] = [];
-          
-          for (const blog of buyLogs) {
-            const parsed = marketContract.interface.parseLog({ topics: blog.topics as string[], data: blog.data });
-            if (parsed) {
-              allTrades.push({
-                traderAddress: parsed.args.buyer,
-                tradeType: 'buy',
-                usdcAmount: ethers.formatUnits(parsed.args.usdcIn, 6),
-                tokenAmount: ethers.formatUnits(parsed.args.tokenOut, 18),
-                timestamp: Math.floor(Date.now() / 1000), // block timestamp fallback or mock
-                txHash: blog.transactionHash
-              });
+          if (
+            prevReserves &&
+            prevReserves.usdc === reserveUSDC &&
+            prevReserves.token === reserveToken
+          ) {
+            // Reserves unchanged — no new trades since last cycle.
+            allTrades = prevReserves.trades;
+          } else {
+            // Reserves changed (or first run) — fetch fresh trade logs.
+            let buyLogs: any[] = [];
+            let sellLogs: any[] = [];
+            try {
+              buyLogs = await marketContract.queryFilter(marketContract.filters.Buy(), fromBlock, 'latest');
+              sellLogs = await marketContract.queryFilter(marketContract.filters.Sell(), fromBlock, 'latest');
+            } catch (err) {
+              console.warn("Failed to query market trade logs for", tokenAddr, err);
             }
-          }
 
-          for (const slog of sellLogs) {
-            const parsed = marketContract.interface.parseLog({ topics: slog.topics as string[], data: slog.data });
-            if (parsed) {
-              allTrades.push({
-                traderAddress: parsed.args.seller,
-                tradeType: 'sell',
-                usdcAmount: ethers.formatUnits(parsed.args.usdcOut, 6),
-                tokenAmount: ethers.formatUnits(parsed.args.tokenIn, 18),
-                timestamp: Math.floor(Date.now() / 1000),
-                txHash: slog.transactionHash
-              });
+            allTrades = [];
+            for (const blog of buyLogs) {
+              const parsed = marketContract.interface.parseLog({ topics: blog.topics as string[], data: blog.data });
+              if (parsed) {
+                allTrades.push({
+                  traderAddress: parsed.args.buyer,
+                  tradeType: 'buy',
+                  usdcAmount: ethers.formatUnits(parsed.args.usdcIn, 6),
+                  tokenAmount: ethers.formatUnits(parsed.args.tokenOut, 18),
+                  timestamp: Math.floor(Date.now() / 1000),
+                  txHash: blog.transactionHash
+                });
+              }
             }
-          }
+            for (const slog of sellLogs) {
+              const parsed = marketContract.interface.parseLog({ topics: slog.topics as string[], data: slog.data });
+              if (parsed) {
+                allTrades.push({
+                  traderAddress: parsed.args.seller,
+                  tradeType: 'sell',
+                  usdcAmount: ethers.formatUnits(parsed.args.usdcOut, 6),
+                  tokenAmount: ethers.formatUnits(parsed.args.tokenIn, 18),
+                  timestamp: Math.floor(Date.now() / 1000),
+                  txHash: slog.transactionHash
+                });
+              }
+            }
+            allTrades.sort((a, b) => b.timestamp - a.timestamp);
 
-          allTrades.sort((a, b) => b.timestamp - a.timestamp);
-
-          if (allTrades.length > 0) {
-            const historyKey = `arc_trades_${marketAddr.toLowerCase()}`;
-            const fullTrades = allTrades.map(t => {
-              const sp = parseFloat(t.usdcAmount) / parseFloat(t.tokenAmount);
-              return {
-                marketAddress: marketAddr,
-                tokenAddress: tokenAddr,
-                tokenSymbol: symbol,
-                traderAddress: t.traderAddress,
-                tradeType: t.tradeType,
-                usdcAmount: t.usdcAmount,
-                tokenAmount: t.tokenAmount,
-                spotPrice: isNaN(sp) ? 0 : sp,
-                marketCap: (isNaN(sp) ? 0 : sp) * 1_000_000_000,
-                liquidity: (parseFloat(t.usdcAmount) || 0) * 2,
-                usdcReserve: reserveUSDC.toString(),
-                tokenReserve: reserveToken.toString(),
-                timestamp: t.timestamp,
-                blockTimestamp: t.timestamp,
-                blockNumber: 0,
-                txHash: t.txHash
-              };
-            });
-            localStorage.setItem(historyKey, JSON.stringify(fullTrades));
+            // Update reserves cache with fresh trade data for next cycle.
+            reservesCache.set(cacheKey, { usdc: reserveUSDC, token: reserveToken, trades: allTrades });
           }
+          // NOTE: Supabase trade_events (written by BuyPanel/SellPanel) is the
+          // canonical source of truth for charts and history.
+          // localStorage arc_trades_* is NOT written here.
 
           const existing = assetsRef.current.find(a => a.contractAddress.toLowerCase() === tokenAddr.toLowerCase());
 
@@ -404,6 +450,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             priceChangePercent,
             tradeCount: allTrades.length
           });
+
+          // Sync dynamic stats to Supabase if they changed
+          if (
+            !existing ||
+            existing.marketCap !== marketCap ||
+            existing.liquidity !== liquidity ||
+            existing.holderCount !== holderCount ||
+            existing.volume24h !== volume24h
+          ) {
+            void updateTokenStats(
+              tokenAddr,
+              marketCap,
+              liquidity,
+              holderCount,
+              volume24h
+            );
+          }
         }
 
         if (active) {
@@ -511,9 +574,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [address]);
 
   const addToken = useCallback((token: MemeAsset) => {
-    setAssets(prev => [token, ...prev]);
-  }, []);
+    // 1. Perform side-effect outside the pure state updater
+    insertToken(token).catch(err => console.error('Token save failed', err));
 
+    // 2. Queue state update
+    setAssets(prev => {
+      // Duplicate check by contract address
+      if (prev.some(t => t.contractAddress?.toLowerCase() === token.contractAddress?.toLowerCase())) {
+        console.log('Token already exists');
+        return prev;
+      }
+      return [token, ...prev];
+    });
+  }, []);
+// Deactivate (soft‑delete) a token – only creator can deactivate
+const deactivateToken = useCallback(async (contractAddress: string) => {
+  if (!address) {
+    console.warn('No wallet address for deactivation');
+    return;
+  }
+  try {
+    const success = await deactivateTokenService(contractAddress, address.toLowerCase());
+    if (success) {
+      setAssets(prev => {
+        const filtered = prev.filter(t => t.contractAddress?.toLowerCase() !== contractAddress.toLowerCase());
+        // Update localStorage cache
+        try { localStorage.setItem('arc_registry', JSON.stringify(filtered)); } catch (e) {}
+        return filtered;
+      });
+      console.log('Token deactivated locally');
+    }
+  } catch (e) {
+    console.error('Token deactivation error', e);
+  }
+}, [address]);
   // USDC balance
   const { data: balanceData, isLoading: balanceLoading } = useBalance({
     address: address,
@@ -556,6 +650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showOnboarding,
     createProfile,
     addToken,
+    deactivateToken,
     addActivity,
     theme,
     setTheme

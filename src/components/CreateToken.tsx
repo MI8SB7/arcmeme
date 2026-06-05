@@ -61,8 +61,12 @@ export const CreateToken: React.FC = () => {
   const publicClient = usePublicClient();
 
   // Watch for transaction confirmation and parse event logs
+  const processedTxRef = React.useRef<string | null>(null);
+
   React.useEffect(() => {
     if (isConfirmed && receipt && step !== 'success') {
+      if (processedTxRef.current === receipt.transactionHash) return;
+      processedTxRef.current = receipt.transactionHash;
       try {
         let newAddress = '';
         for (const log of receipt.logs) {
@@ -80,7 +84,6 @@ export const CreateToken: React.FC = () => {
 
               if (newAddress) {
                 setCreatedTokenAddress(newAddress);
-                
                 const newToken: MemeAsset = {
                   id: Math.random().toString(36).substr(2, 9),
                   name: tokenName,
@@ -100,6 +103,12 @@ export const CreateToken: React.FC = () => {
                   hotness: 0,
                   followers: 0,
                   launchDate: new Date().toISOString(),
+                  // Default stats (will be updated by sync)
+                  marketCap: 0,
+                  liquidity: 0,
+                  holderCount: 1,
+                  volume24h: 0,
+                  price: 0,
                   txHash: receipt.transactionHash,
                 };
                 
