@@ -157,7 +157,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const existingMap = new Map(prev.map(a => [a.contractAddress?.toLowerCase(), a]));
           supabaseTokens.forEach(tok => {
             const addr = tok.contractAddress?.toLowerCase();
-            if (addr && !existingMap.has(addr)) {
+            if (addr) {
+              // Always prefer Supabase tokens to fix logo persistence issues
               existingMap.set(addr, tok as any);
             }
           });
@@ -471,20 +472,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         if (active) {
           updatedAssets.sort((a, b) => a.rank - b.rank);
-
           // Smart deduplication: only call setAssets if dynamic data actually changed.
           // Compare a fingerprint of price/market fields to avoid re-rendering consumers
           // every 5 seconds when the blockchain state is identical.
           const fingerprint = (arr: MemeAsset[]) =>
             arr.map(a => `${a.contractAddress}:${a.price?.toFixed(10)}:${a.marketCap?.toFixed(2)}:${a.holderCount}:${a.tradeCount}`).join('|');
-
-          setAssets(prev => {
-            const prevFp = fingerprint(prev);
-            const nextFp = fingerprint(updatedAssets);
-            if (prevFp === nextFp) return prev; // Same data — no re-render
-            return updatedAssets;
-
-          });
+          if (active) {
+            setAssets(prev => {
+              const mergedAssets = [...prev];
+              for (const updated of updatedAssets) {
+                const index = mergedAssets.findIndex(a => a.contractAddress.toLowerCase() === updated.contractAddress.toLowerCase());
+                if (index >= 0) {
+                  // Preserve all rich metadata (logo, description, etc) from Supabase.
+                  // Only update the dynamic on-chain stats.
+                  mergedAssets[index] = {
+                    ...mergedAssets[index],
+                    price: updated.price,
+                    marketCap: updated.marketCap,
+                    liquidity: updated.liquidity,
+                    volume24h: updated.volume24h,
+                    holderCount: updated.holderCount,
+                    priceChangePercent: updated.priceChangePercent,
+                    tradeCount: updated.tradeCount,
+                    // keep rank stable if possible, or update it
+                    rank: updated.rank,
+                  };
+                } else {
+                  mergedAssets.push(updated);
+                }
+              }
+              
+              const prevFp = fingerprint(prev);
+              const nextFp = fingerprint(mergedAssets);
+              if (prevFp === nextFp) return prev; // Same data — no re-render
+              return mergedAssets.sort((a, b) => a.rank - b.rank);
+            });
+          }
           setIsAssetsLoading(false);
         }
       } catch (err) {

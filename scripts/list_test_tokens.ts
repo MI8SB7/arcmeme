@@ -8,19 +8,16 @@ import { ARC_MEME_FACTORY_ADDRESS, ARC_MEME_FACTORY_ABI } from '../src/config/co
   const tokenAddrs: string[] = await factory.getAllTokens();
   console.log('Total tokens:', tokenAddrs.length);
   for (const addr of tokenAddrs) {
+    console.log(addr);
     const token = new ethers.Contract(addr, [
       'function name() view returns (string)',
-      'function symbol() view returns (string)',
-      'function market() view returns (address)'
+      'function symbol() view returns (string)'
     ], provider);
     try {
       const [name, symbol] = await Promise.all([token.name(), token.symbol()]);
-      if (['LUFFY', 'PE', 'KAK'].includes(name) || ['LUFFY', 'PE', 'KAK'].includes(symbol)) {
-        const market = await token.market?.();
-        console.log({ name, symbol, contractAddress: addr, marketAddress: market ?? 'N/A' });
-      }
+      console.log(`  -> ${symbol} (${name})`);
     } catch (e) {
-      // ignore errors
+      console.log(`  -> error fetching name/symbol`);
     }
   }
 })();

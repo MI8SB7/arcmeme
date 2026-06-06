@@ -10,32 +10,36 @@ export const getAllTokens = async (): Promise<MemeAsset[]> => {
   }
   // Only return tokens that are active (default true).
   const rows = (data as any[]).filter(row => row.is_active !== false);
-  return rows.map(row => ({
-    id: row.id ?? Math.random().toString(36).substr(2, 9),
-    name: row.name ?? '',
-    symbol: row.symbol ?? '',
-    contractAddress: row.contract_address ?? '',
-    marketAddress: row.market_address ?? '',
-    logo: row.logo_url ?? '',
-    category: row.category ?? 'Community',
-    verificationStatus: row.verification_status ?? 'New',
-    description: row.description ?? '',
-    creatorName: row.creator_name ?? '',
-    creatorHandle: row.creator_wallet ?? '',
-    creatorAvatar: row.creator_avatar ?? '',
-    likes: row.likes ?? 0,
-    views: row.views ?? 0,
-    rank: row.rank ?? 0,
-    hotness: row.hotness ?? 0,
-    followers: row.followers ?? 0,
-    launchDate: row.launch_date ?? new Date().toISOString(),
-    txHash: row.tx_hash ?? '',
-    // Add dynamic stats with safe defaults
-    marketCap: row.market_cap ?? 0,
-    liquidity: row.liquidity ?? 0,
-    holderCount: row.holders ?? 0,
-    volume24h: row.volume_24h ?? 0,
-  } as MemeAsset));
+  return rows.map(row => {
+    const asset = {
+      id: row.id ?? Math.random().toString(36).substr(2, 9),
+      name: row.name ?? '',
+      symbol: row.symbol ?? '',
+      contractAddress: row.contract_address ?? '',
+      marketAddress: row.market_address ?? '',
+      logo: row.logo_url ?? '',
+      category: row.category ?? 'Community',
+      verificationStatus: row.verification_status ?? 'New',
+      description: row.description ?? '',
+      creatorName: row.creator_name ?? '',
+      creatorHandle: row.creator_wallet ?? '',
+      creatorAvatar: row.creator_avatar ?? '',
+      likes: row.likes ?? 0,
+      views: row.views ?? 0,
+      rank: row.rank ?? 0,
+      hotness: row.hotness ?? 0,
+      followers: row.followers ?? 0,
+      launchDate: row.launch_date ?? new Date().toISOString(),
+      txHash: row.tx_hash ?? '',
+      // Add dynamic stats with safe defaults
+      marketCap: row.market_cap ?? 0,
+      liquidity: row.liquidity ?? 0,
+      holderCount: row.holders ?? 0,
+      volume24h: row.volume_24h ?? 0,
+    } as MemeAsset;
+    
+    return asset;
+  });
 };
 
 /** Update token dynamic stats (price, marketCap, liquidity, holderCount, volume24h) */

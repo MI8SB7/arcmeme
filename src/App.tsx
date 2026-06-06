@@ -5,13 +5,15 @@ import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
 import { Dashboard } from './components/Dashboard';
 import { CreateToken } from './components/CreateToken';
-import { ComingSoonView } from './components/ComingSoonView';
 import { LeaderboardTable } from './components/LeaderboardTable';
 import { Trade } from './components/Trade';
 import { CreatorProfile } from './components/CreatorProfile';
 import { OnboardingModal } from './components/OnboardingModal';
 import { AdminDeploy } from './components/AdminDeploy';
 import { AdminDashboard } from './components/AdminDashboard';
+import { SwapPage } from './components/SwapPage';
+import { TrendingPage } from './components/TrendingPage';
+import { LatestLaunchesPage } from './components/LatestLaunchesPage';
 
 const MainContent: React.FC = () => {
   return (
@@ -33,11 +35,12 @@ const MainContent: React.FC = () => {
             <Route path="/creator/:address" element={<CreatorProfile />} />
             <Route path="/token/:address" element={<Trade />} />
             <Route path="/trade/:address" element={<Trade />} />
-            <Route path="/trade" element={<ComingSoonView type="trade" />} />
-            <Route path="/swap" element={<ComingSoonView type="swap" />} />
+            <Route path="/swap" element={<SwapPage />} />
             <Route path="/leaderboard" element={<LeaderboardTable />} />
             <Route path="/admin-deploy" element={<AdminDeploy />} />
             <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/trending" element={<TrendingPage />} />
+            <Route path="/latest" element={<LatestLaunchesPage />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
         </main>

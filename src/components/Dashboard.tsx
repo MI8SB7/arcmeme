@@ -1,18 +1,53 @@
 import React, { useMemo, useEffect, useState } from 'react';
-import { DEV_CONTRACTS } from '../config/devContracts';
 import { Link } from 'react-router-dom';
 import { useAppContext } from '../context/AppContext';
 import { FeaturedCarousel } from './FeaturedCarousel';
 import { AssetCard } from './AssetCard';
-import { Flame, Star, Rocket, ArrowRight } from 'lucide-react';
+import { Flame, Star, Rocket, ArrowRight, Clock } from 'lucide-react';
 import { formatPrice } from '../utils/formatPrice';
 
 import { getCreatorDisplayName, getRankedTrendingAssets } from '../utils/dashboardData';
 import { formatDisplaySymbol } from '../utils/formatSymbol';
+import { formatCompactBalance } from '../trading';
+
+const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 const SkeletonValue: React.FC = () => (
   <span className="inline-block animate-pulse bg-border/40 rounded h-4 w-16 align-middle" />
 );
+
+/**
+ * Renders a token logo with reliable fallback.
+ * Handles: data:image/*, http(s) URLs, emoji strings, undefined, empty.
+ */
+const TokenLogo: React.FC<{ logo?: string; size?: string }> = ({ logo, size = 'w-5 h-5' }) => {
+  const isImage =
+    typeof logo === 'string' &&
+    logo.length > 0 &&
+    (logo.startsWith('data:image') || logo.startsWith('http') || logo.startsWith('/'));
+
+  if (isImage) {
+    return (
+      <img
+        src={logo}
+        alt="Token"
+        className={`${size} rounded-full object-cover shrink-0`}
+        onError={(e) => {
+          // Replace broken image with fallback emoji
+          const target = e.currentTarget;
+          target.style.display = 'none';
+          const fallback = document.createElement('span');
+          fallback.className = 'text-sm';
+          fallback.textContent = '🚀';
+          target.parentElement?.appendChild(fallback);
+        }}
+      />
+    );
+  }
+
+  // Emoji or missing — always show something
+  return <span className="text-sm shrink-0">{logo && logo.length > 0 ? logo : '🚀'}</span>;
+};
 
 export const Dashboard: React.FC = () => {
   const { assets, activities, isAssetsLoading, creatorProfiles } = useAppContext();
@@ -33,36 +68,66 @@ export const Dashboard: React.FC = () => {
     return `${Math.floor(hours / 24)}d ago`;
   };
 
-  // Sort activities newest first
-  const sortedActivities = useMemo(() => {
-    return [...activities].sort((a, b) => b.timestamp - a.timestamp);
-  }, [activities]);
+  // ──────────────────────────────────────────────────────────
+  // TICKER — only tokens launched within the last 48 hours
+  // ──────────────────────────────────────────────────────────
+  const recentActivities = useMemo(() => {
+    const cutoff = now - FORTY_EIGHT_HOURS_MS;
+    const seenAddresses = new Set<string>();
 
-  // Filter out activities related to dev contracts or missing token symbols
-  const filteredActivities = useMemo(() => {
-    return sortedActivities.filter((activity) => {
-      const token = assets.find((t) => t.contractAddress === activity.contractAddress);
-      if (!token) return false;
-      // Exclude if contract is in DEV_CONTRACTS (case-insensitive)
-      if (DEV_CONTRACTS.map((c) => c.toLowerCase()).includes(token.contractAddress.toLowerCase())) return false;
-      // Exclude if token symbol is missing, empty, or just a dollar sign
-      if (!token.symbol || token.symbol.trim() === '' || token.symbol.trim() === '$') return false;
-      return true;
-    });
-  }, [sortedActivities, assets]);
+    return [...activities]
+      .sort((a, b) => b.timestamp - a.timestamp) // Sort newest first
+      .filter((activity) => {
+        // Time gate: only recent launches
+        if (activity.timestamp < cutoff) return false;
+        
+        // No duplicate entries
+        const addr = activity.contractAddress?.toLowerCase();
+        if (!addr || seenAddresses.has(addr)) return false;
+        seenAddresses.add(addr);
+
+        // Must match a known, visible asset
+        const token = assets.find((t) => t.contractAddress?.toLowerCase() === addr);
+        if (!token) return false;
+        
+        // Exclude if token symbol is missing, empty, or just a dollar sign
+        if (!token.symbol || token.symbol.trim() === '' || token.symbol.trim() === '$') return false;
+        
+        return true;
+      });
+  }, [activities, assets, now]);
+
+  // Stable ticker key — prevents re-mount (and animation reset) on every `now` tick.
+  // Only changes when the actual set of activities changes.
+  const tickerKey = useMemo(() => {
+    return recentActivities.map(a => a.id).join(',');
+  }, [recentActivities]);
   
-  // Sort by launchDate or ID to get newest first for Latest Launches
-  const latestLaunches = useMemo(() => [...assets].reverse().slice(0, 8), [assets]);
+  // ──────────────────────────────────────────────────────────
+  // LATEST LAUNCHES — sorted by launchDate, newest first
+  // ──────────────────────────────────────────────────────────
+  const latestLaunches = useMemo(() => {
+    return [...assets]
+      .sort((a, b) => {
+        const dateA = a.launchDate ? new Date(a.launchDate).getTime() : 0;
+        const dateB = b.launchDate ? new Date(b.launchDate).getTime() : 0;
+        return dateB - dateA; // newest first
+      })
+      .slice(0, 8);
+  }, [assets]);
   
-  // Dynamic Trending score ranking
+  // ──────────────────────────────────────────────────────────
+  // TRENDING — top 3 only (More Trending removed)
+  // ──────────────────────────────────────────────────────────
   const rankedTrending = useMemo(() => {
     return getRankedTrendingAssets(assets);
   }, [assets]);
 
   const top3Trending = useMemo(() => rankedTrending.slice(0, 3).map(r => r.asset), [rankedTrending]);
-  const remainingTrending = useMemo(() => rankedTrending.slice(3).map(r => r.asset), [rankedTrending]);
 
-  // Top gainers by priceChangePercent
+  // ──────────────────────────────────────────────────────────
+  // TOP GAINERS
+  // ──────────────────────────────────────────────────────────
   const topGainers = useMemo(() => {
     return [...assets]
       .filter(a => a.priceChangePercent !== undefined)
@@ -70,7 +135,9 @@ export const Dashboard: React.FC = () => {
       .slice(0, 6);
   }, [assets]);
 
-  // Render Trending Section Skeleton
+  // ──────────────────────────────────────────────────────────
+  // SKELETONS
+  // ──────────────────────────────────────────────────────────
   const renderTrendingSkeletons = () => (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
       {[1, 2, 3].map((rank) => (
@@ -117,7 +184,6 @@ export const Dashboard: React.FC = () => {
     </div>
   );
 
-  // Render Top Gainers Skeleton
   const renderGainerSkeletons = () => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {[1, 2, 3, 4].map((rank) => (
@@ -145,14 +211,18 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="flex-1 space-y-8">
       
-      {/* Section 1: Live Activity Feed */}
-      {filteredActivities.length > 0 && (
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 1 — LIVE LAUNCH TICKER (48-hour window)
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+      {recentActivities.length > 0 && (
         <section className="relative overflow-hidden glassmorphism-light border-y border-border bg-background/50 py-3">
-          <div className="flex whitespace-nowrap animate-marquee items-center pl-6 hover:[animation-play-state:paused]">
-            {filteredActivities.concat(filteredActivities).map((activity, idx) => {
-              const token = assets.find(t => t.contractAddress === activity.contractAddress);
-              const logo = token?.logo ?? '🚀';
-              const isImage = typeof logo === 'string' && logo.startsWith('data:image');
+          <div
+            key={tickerKey}
+            className="flex whitespace-nowrap animate-marquee items-center pl-6 hover:[animation-play-state:paused]"
+          >
+            {recentActivities.concat(recentActivities).map((activity, idx) => {
+              const token = assets.find(t => t.contractAddress?.toLowerCase() === activity.contractAddress?.toLowerCase());
+              const logo = token?.logo;
               const creatorDisplayName = token 
                 ? getCreatorDisplayName(token, creatorProfiles) 
                 : getCreatorDisplayName({ creatorName: activity.creatorName, creatorHandle: activity.creatorName } as any, creatorProfiles);
@@ -160,7 +230,7 @@ export const Dashboard: React.FC = () => {
               return (
                 <Link to={`/token/${activity.contractAddress}`} key={`${activity.id}-${idx}`} className="flex items-center space-x-2 mx-8 text-sm hover:opacity-85 transition-opacity">
                   <span className="w-5 h-5 flex items-center justify-center overflow-hidden rounded-full shrink-0 bg-border/50">
-                    {isImage ? <img src={logo} alt="Logo" className="w-full h-full object-cover" /> : <span className="text-sm">{logo}</span>}
+                    <TokenLogo logo={logo} size="w-5 h-5" />
                   </span>
                   <span className="text-text font-semibold">
                     <span className="font-extrabold text-[#4F46E5] dark:text-[#A855F7]">{creatorDisplayName}</span>
@@ -177,72 +247,63 @@ export const Dashboard: React.FC = () => {
         </section>
       )}
 
-      {/* Featured Carousel */}
+      {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          SECTION 2 — FEATURED CAROUSEL (Hero)
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
       <section className="px-6 md:px-10">
         <FeaturedCarousel />
       </section>
 
       <div className="px-6 md:px-10 space-y-12 pb-20">
         
-        {/* Trending Tokens */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            SECTION 3 — TRENDING ON ARCMEME (Top 3 only)
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <section>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
               <Flame className="text-[#EF4444]" size={24} />
               <h2 className="text-2xl font-bold text-text">Trending on ArcMeme</h2>
             </div>
-            <button className="text-sm text-accent hover:text-secondary flex items-center transition-colors">
+            <Link
+              to="/trending"
+              className="text-sm text-accent hover:text-secondary flex items-center transition-colors"
+            >
               View all <ArrowRight size={16} className="ml-1" />
-            </button>
+            </Link>
           </div>
           
           {/* Top 3 Large Featured Cards */}
           {isAssetsLoading && assets.length === 0 ? (
             renderTrendingSkeletons()
           ) : top3Trending.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-{top3Trending.map((asset, index) => (
-  <AssetCard key={asset.id} asset={asset} rank={index + 1} showRank />
-))}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {top3Trending.map((asset, index) => (
+                <AssetCard key={asset.id} asset={asset} rank={index + 1} showRank />
+              ))}
             </div>
           ) : (
             <div className="w-full rounded-2xl bg-card/40 border border-border flex items-center justify-center p-10 shadow-sm">
               <p className="text-muted font-medium text-lg">No community tokens launched yet.</p>
             </div>
           )}
-
-          {/* Remaining Trending Tokens as horizontal cards */}
-          {(isAssetsLoading && assets.length === 0) ? (
-            <div className="space-y-4 pt-4">
-              <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">More Trending</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[4, 5, 6, 7, 8, 9, 10].map((rank) => (
-                  <AssetCard key={rank} loading={true} rank={rank} />
-                ))}
-              </div>
-            </div>
-          ) : remainingTrending.length > 0 ? (
-            <div className="space-y-4 pt-4">
-              <h3 className="text-xs font-bold text-muted uppercase tracking-wider mb-3">More Trending</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {remainingTrending.slice(0, 7).map((asset, index) => (
-                  <AssetCard key={asset.id} asset={asset} rank={index + 4} />
-                ))}
-              </div>
-            </div>
-          ) : null}
         </section>
 
-        {/* Latest Launches */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            SECTION 4 — LATEST LAUNCHES (replaces More Trending)
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <section>
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center space-x-3">
               <Rocket className="text-[#A855F7]" size={28} />
               <h2 className="text-2xl md:text-3xl font-bold text-text">Latest Launches</h2>
             </div>
-            <button className="text-sm text-accent hover:text-secondary flex items-center transition-colors">
+            <Link
+              to="/latest"
+              className="text-sm text-accent hover:text-secondary flex items-center transition-colors"
+            >
               View all <ArrowRight size={16} className="ml-1" />
-            </button>
+            </Link>
           </div>
           
           {isAssetsLoading && assets.length === 0 ? (
@@ -253,8 +314,57 @@ export const Dashboard: React.FC = () => {
             </div>
           ) : latestLaunches.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {latestLaunches.slice(0, 4).map((asset) => (
-                <AssetCard key={asset.id} asset={asset} />
+              {latestLaunches.slice(0, 8).map((asset) => (
+                <Link
+                  key={asset.id}
+                  to={`/token/${asset.contractAddress}`}
+                  className="glassmorphism rounded-2xl p-5 hover:scale-[1.01] hover:border-accent transition-all duration-300 cursor-pointer group relative overflow-hidden block"
+                >
+                  {/* Logo + Name + Symbol */}
+                  <div className="flex items-center space-x-4 mb-4 relative z-10">
+                    <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
+                      <TokenLogo logo={asset.logo} size="w-10 h-10" />
+                    </div>
+                    <div className="flex flex-col items-start min-w-0">
+                      <span className="text-sm font-mono text-accent font-semibold truncate max-w-[120px]">{formatDisplaySymbol(asset.symbol)}</span>
+                      <span className="block text-xs text-muted mt-0.5 truncate max-w-[120px]">{asset.name}</span>
+                    </div>
+                  </div>
+
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 gap-y-3 text-xs pt-3 border-t border-border mt-3 text-muted">
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-muted mb-0.5">Price</span>
+                      <span className="font-semibold text-text">
+                        {asset.price !== undefined && asset.price > 0 ? `$${formatPrice(asset.price)}` : '--'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-[10px] uppercase tracking-wider text-muted mb-0.5">Mkt Cap</span>
+                      <span className="font-semibold text-[#10B981]">
+                        {asset.marketCap !== undefined && asset.marketCap > 0 ? `$${formatCompactBalance(asset.marketCap)}` : '--'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block text-[10px] uppercase tracking-wider text-muted mb-0.5">Liquidity</span>
+                      <span className="font-semibold text-text">
+                        {asset.liquidity !== undefined && asset.liquidity > 0 ? `$${formatCompactBalance(asset.liquidity)}` : '--'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="block text-[10px] uppercase tracking-wider text-muted mb-0.5">Launched</span>
+                      <span className="font-semibold text-text flex items-center justify-end space-x-1">
+                        <Clock size={10} className="text-muted" />
+                        <span>{asset.launchDate ? getRelativeTime(new Date(asset.launchDate).getTime()) : '--'}</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Creator */}
+                  <div className="mt-4 pt-3 border-t border-border flex items-center text-xs text-muted">
+                    <span className="truncate">Creator: <span className="text-text font-medium">{getCreatorDisplayName(asset, creatorProfiles)}</span></span>
+                  </div>
+                </Link>
               ))}
             </div>
           ) : (
@@ -264,13 +374,16 @@ export const Dashboard: React.FC = () => {
           )}
         </section>
 
-        {/* Top Gainers */}
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            SECTION 5 — TOP GAINERS
+            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <section>
           <div className="flex items-center space-x-3 mb-8">
             <Star className="text-[#F59E0B]" size={24} />
             <h2 className="text-2xl font-bold text-text">Top Gainers</h2>
           </div>
-          
+
+
           {isAssetsLoading && assets.length === 0 ? (
             renderGainerSkeletons()
           ) : topGainers.length > 0 ? (
@@ -282,18 +395,14 @@ export const Dashboard: React.FC = () => {
 
                 return (
                   <Link 
-                    key={asset.id}
+                    key={asset.contractAddress}
                     to={`/token/${asset.contractAddress}`}
                     className="flex items-center justify-between p-4 glassmorphism-light rounded-xl border border-border hover:border-accent transition-all group"
                   >
                     <div className="flex items-center space-x-4">
                       <div className="text-2xl w-10 text-center text-muted font-bold">#{idx + 1}</div>
                       <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
-                        {typeof asset.logo === 'string' && asset.logo.startsWith('data:image') ? (
-                          <img src={asset.logo} alt="Logo" className="w-full h-full object-cover" />
-                        ) : (
-                          asset.logo ?? '🚀'
-                        )}
+                        <TokenLogo logo={asset.logo} size="w-10 h-10" />
                       </div>
                       <div>
                         <span className="text-sm font-mono text-accent font-semibold">{formatDisplaySymbol(asset.symbol)}</span>
