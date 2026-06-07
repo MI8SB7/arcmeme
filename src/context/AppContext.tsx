@@ -594,12 +594,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               allProfiles.forEach(p => {
                 if (p.wallet_address) {
                   const addr = p.wallet_address.toLowerCase();
-                  if (!next[addr] || next[addr].displayName !== p.username) {
+                  const targetName = p.display_name || p.username;
+                  if (!next[addr] || next[addr].displayName !== targetName) {
                     next[addr] = {
                       ...(next[addr] || {}),
                       walletAddress: p.wallet_address,
-                      displayName: p.username,
-                      avatarSeed: p.username.charAt(0).toUpperCase(),
+                      displayName: targetName,
+                      avatarSeed: targetName.charAt(0).toUpperCase(),
                       verificationStatus: next[addr]?.verificationStatus || 'Creator',
                       joinedAt: next[addr]?.joinedAt || new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
                     };
@@ -620,8 +621,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentUser = isConnected && address ? profiles[address] || null : null;
   const showOnboarding = isConnected && address && !currentUser ? true : false;
 
-  const createProfile = useCallback((displayName: string) => {
+  const createProfile = useCallback(async (displayName: string) => {
     if (!address) return;
+    
+    try {
+      const { updateProfile } = await import('../services/profileService');
+      await updateProfile(address.toLowerCase(), { display_name: displayName });
+    } catch (err) {
+      console.error("Failed to update profile in database", err);
+    }
+
     const newProfile: UserProfile = {
       walletAddress: address,
       displayName,

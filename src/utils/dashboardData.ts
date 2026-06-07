@@ -37,11 +37,13 @@ export const getCreatorDisplayName = (
   const creator = (asset as MemeAsset & { creator?: CreatorLike }).creator;
   const profileKey = asset.creatorHandle ? asset.creatorHandle.toLowerCase() : '';
   const profile = profileKey ? profiles[profileKey] : undefined;
+  
+  // Priority: profile.displayName (from profiles table: display_name -> username) -> fallback creator fields
   const candidates = [
-    creator?.username,
+    profile?.displayName,
     creator?.displayName,
     creator?.name,
-    profile?.displayName,
+    creator?.username,
     asset.creatorName,
   ];
 

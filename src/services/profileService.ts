@@ -5,6 +5,7 @@ export interface Profile {
   created_at?: string;
   wallet_address: string;
   username: string;
+  display_name?: string | null;
   avatar_url?: string;
   bio?: string;
 }
@@ -35,6 +36,19 @@ export const createProfile = async (profile: Omit<Profile, 'id' | 'created_at'>)
   const { data, error } = await supabase.from('profiles').insert([profile]).single();
   if (error) {
     console.error('Supabase createProfile error', error);
+    return null;
+  }
+  return data as Profile;
+};
+
+export const updateProfile = async (walletAddress: string, updates: Partial<Profile>): Promise<Profile | null> => {
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(updates)
+    .eq('wallet_address', walletAddress)
+    .single();
+  if (error) {
+    console.error('Supabase updateProfile error', error);
     return null;
   }
   return data as Profile;
