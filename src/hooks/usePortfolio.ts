@@ -57,17 +57,30 @@ export function usePortfolio(targetAddress?: string) {
         if (!isMounted) return;
         setRecentTrades(trades);
 
-        // Find unique tokens the user has traded or created
-        const activeMarketAddresses = new Set(trades.map(t => t.marketAddress?.toLowerCase()).filter(Boolean));
+        // Find unique tokens the user has traded or created by CONTRACT address
+        const activeContractAddresses = new Set(trades.map(t => t.tokenAddress?.toLowerCase()).filter(Boolean));
+        
+        // Enhance assets with missing marketAddresses from trades
+        const enhancedAssets = currentAssets.map(a => {
+          if (a.marketAddress) return a;
+          const trade = trades.find(t => t.tokenAddress?.toLowerCase() === a.contractAddress.toLowerCase() && t.marketAddress);
+          if (trade) return { ...a, marketAddress: trade.marketAddress };
+          return a;
+        });
         
         // Also add tokens created by the user
-        currentAssets.forEach(a => {
+        enhancedAssets.forEach(a => {
           if (a.creatorHandle?.toLowerCase() === address.toLowerCase()) {
-            if (a.marketAddress) activeMarketAddresses.add(a.marketAddress.toLowerCase());
+            if (a.contractAddress) activeContractAddresses.add(a.contractAddress.toLowerCase());
           }
         });
 
-        const activeList = currentAssets.filter(a => a.marketAddress && activeMarketAddresses.has(a.marketAddress.toLowerCase()));
+        let activeList = enhancedAssets.filter(a => a.contractAddress && activeContractAddresses.has(a.contractAddress.toLowerCase()));
+        
+        // We MUST have a marketAddress for the multicall to succeed
+        // Filter out any that still don't have a marketAddress to prevent wagmi InvalidAddress errors
+        activeList = activeList.filter(a => a.marketAddress && a.marketAddress.startsWith('0x'));
+        
         if (isMounted) setActiveAssets(activeList);
 
         // Fetch cost bases
@@ -140,13 +153,14 @@ export function usePortfolio(targetAddress?: string) {
     let i = 0;
     
     for (const asset of activeAssets) {
-      const balanceRes = multicallData[i++];
-      const reserveUsdcRes = multicallData[i++];
-      const reserveTokenRes = multicallData[i++];
+      // In Wagmi v2, multicallData is an array of { result, status, error }
+      const balanceObj = multicallData[i++];
+      const reserveUsdcObj = multicallData[i++];
+      const reserveTokenObj = multicallData[i++];
 
-      const balance = balanceRes?.result as bigint | undefined ?? 0n;
-      const reserveUSDC = reserveUsdcRes?.result as bigint | undefined ?? 0n;
-      const reserveToken = reserveTokenRes?.result as bigint | undefined ?? 0n;
+      const balance = (balanceObj?.result as bigint | undefined) ?? 0n;
+      const reserveUSDC = (reserveUsdcObj?.result as bigint | undefined) ?? 0n;
+      const reserveToken = (reserveTokenObj?.result as bigint | undefined) ?? 0n;
 
       if (balance > 0n) {
         const spotPrice = calculateSpotPrice(reserveUSDC, reserveToken);
