@@ -6,6 +6,7 @@ import { useReadContracts } from 'wagmi';
 import { parseAbi } from 'viem';
 import { calculateSpotPrice, calculateMarketCap } from '../trading';
 import { formatDisplaySymbol } from '../utils/formatSymbol';
+import { getCreatorDisplayName } from '../utils/dashboardData';
 
 import { indexerApi, type TradeEvent } from '../utils/indexerApi';
 
@@ -21,7 +22,7 @@ const TokenLogo: React.FC<{ logo: string; symbol: string }> = ({ logo, symbol })
 };
 
 export const LeaderboardTable: React.FC = () => {
-  const { assets } = useAppContext();
+  const { assets, creatorProfiles } = useAppContext();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'tokens' | 'creators' | 'traders'>('tokens');
@@ -194,7 +195,7 @@ export const LeaderboardTable: React.FC = () => {
       if (!creatorGroups[handleLower]) {
         creatorGroups[handleLower] = {
           handle: handle,
-          name: asset.creatorName || 'Unknown',
+          name: getCreatorDisplayName(asset, creatorProfiles),
           avatar: asset.creatorAvatar || '👤',
           tokensCount: 0
         };
@@ -203,7 +204,7 @@ export const LeaderboardTable: React.FC = () => {
     });
 
     return Object.values(creatorGroups).sort((a, b) => b.tokensCount - a.tokensCount);
-  }, [assets]);
+  }, [assets, creatorProfiles]);
 
   // 6. TAB C: Traders Calculation
   const tradersList = useMemo(() => {
