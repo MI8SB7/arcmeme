@@ -29,7 +29,7 @@ export const getAllTokens = async (): Promise<MemeAsset[]> => {
       rank: row.rank ?? 0,
       hotness: row.hotness ?? 0,
       followers: row.followers ?? 0,
-      launchDate: row.launch_date ?? new Date().toISOString(),
+      launchDate: row.created_at ?? new Date().toISOString(),
       txHash: row.tx_hash ?? '',
       // Add dynamic stats with safe defaults
       marketCap: row.market_cap ?? 0,
