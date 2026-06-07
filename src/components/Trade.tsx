@@ -7,7 +7,7 @@ import { erc20Abi, formatUnits, parseAbi } from 'viem';
 import { BuyPanel } from './BuyPanel';
 import { SellPanel } from './SellPanel';
 import { TradingChart } from './TradingChart';
-import { ARC_NATIVE_USDC } from '../config/contracts';
+import { ARC_NATIVE_USDC, ARC_MEME_FACTORY_ADDRESS, ARC_MEME_FACTORY_ABI } from '../config/contracts';
 import { calculateSpotPrice, calculateMarketCap, formatCompactBalance } from '../trading';
 import { indexerApi, type TradeEvent } from '../utils/indexerApi';
 import { formatPrice } from '../utils/formatPrice';
@@ -46,8 +46,23 @@ export const Trade: React.FC = () => {
   const { address: userAddress } = useAccount();
   
   const asset = assets.find((a) => a.contractAddress === address);
-  const tokenAddress = (asset?.contractAddress ?? EMPTY_ADDRESS) as `0x${string}`;
-  const marketAddress = (asset?.marketAddress ?? EMPTY_ADDRESS) as `0x${string}`;
+  const tokenAddress = (asset?.contractAddress || EMPTY_ADDRESS) as `0x${string}`;
+  const contextMarketAddress = (asset?.marketAddress || EMPTY_ADDRESS) as `0x${string}`;
+  
+  // Dynamically resolve market address if it's missing from context
+  const { data: factoryMarketAddress } = useReadContract({
+    address: ARC_MEME_FACTORY_ADDRESS as `0x${string}`,
+    abi: ARC_MEME_FACTORY_ABI,
+    functionName: 'tokenToMarket',
+    args: [tokenAddress],
+    query: {
+      enabled: tokenAddress !== EMPTY_ADDRESS && contextMarketAddress === EMPTY_ADDRESS,
+    }
+  });
+
+  const marketAddress = (contextMarketAddress !== EMPTY_ADDRESS 
+    ? contextMarketAddress 
+    : (factoryMarketAddress as string || EMPTY_ADDRESS)) as `0x${string}`;
   const creatorAddress = (
     asset?.creatorHandle?.startsWith('0x') ? asset.creatorHandle : EMPTY_ADDRESS
   ) as `0x${string}`;
@@ -102,9 +117,9 @@ export const Trade: React.FC = () => {
   
   useEffect(() => {
     const fetchMarketData = async () => {
-      if (!asset?.marketAddress) return;
+      if (!marketAddress || marketAddress === EMPTY_ADDRESS) return;
       try {
-        const trades = await indexerApi.getRecentTrades(asset.marketAddress);
+        const trades = await indexerApi.getRecentTrades(marketAddress);
         const uniqueAddresses = new Set<string>();
         if (asset.creatorHandle) {
           uniqueAddresses.add(asset.creatorHandle.toLowerCase());
@@ -126,7 +141,7 @@ export const Trade: React.FC = () => {
       }
     };
     fetchMarketData();
-  }, [asset?.marketAddress, chartRefresh]);
+  }, [marketAddress, chartRefresh, asset?.creatorHandle]);
 
   const holders = totalSupplyRes?.result ? `${holderCount} Holder${holderCount === 1 ? '' : 's'}` : 'Loading...';
 
@@ -150,7 +165,7 @@ export const Trade: React.FC = () => {
       }
     ],
     query: {
-      enabled: !!asset?.marketAddress,
+      enabled: marketAddress !== EMPTY_ADDRESS,
       refetchInterval: 5000,
     }
   });
@@ -244,7 +259,7 @@ export const Trade: React.FC = () => {
           </div>
 
           {/* Chart Section */}
-          <TradingChart marketAddress={asset.marketAddress || ''} refreshTrigger={chartRefresh} />
+          <TradingChart marketAddress={marketAddress !== EMPTY_ADDRESS ? marketAddress : ''} refreshTrigger={chartRefresh} />
 
           {/* Recent Trades Section */}
           <div className="glassmorphism-light p-6 rounded-xl border border-border/50 space-y-4">
@@ -312,7 +327,7 @@ export const Trade: React.FC = () => {
         <div className="lg:col-span-1 space-y-6">
           <div className="glassmorphism p-6 rounded-2xl border border-border shadow-md">
             
-            {!asset.marketAddress ? (
+            {marketAddress === EMPTY_ADDRESS ? (
               <div className="text-center p-6 text-muted">
                 Market unavailable
               </div>
@@ -336,8 +351,8 @@ export const Trade: React.FC = () => {
                 <div className="flex justify-center">
                   {tradeMode === 'buy' ? (
                     <BuyPanel 
-                      marketAddress={asset.marketAddress}
-                      tokenAddress={asset.contractAddress}
+                      marketAddress={marketAddress}
+                      tokenAddress={tokenAddress}
                       usdcAddress={ARC_NATIVE_USDC}
                       userAddress={userAddress ?? null}
                       reserveUSDC={reserveUSDC ?? 0n}
@@ -349,8 +364,8 @@ export const Trade: React.FC = () => {
                     />
                   ) : (
                     <SellPanel 
-                      marketAddress={asset.marketAddress}
-                      tokenAddress={asset.contractAddress}
+                      marketAddress={marketAddress}
+                      tokenAddress={tokenAddress}
                       userAddress={userAddress ?? null}
                       reserveUSDC={reserveUSDC ?? 0n}
                       reserveToken={reserveToken ?? 0n}

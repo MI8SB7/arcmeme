@@ -8,7 +8,8 @@ export const ARC_MEME_FACTORY_ABI = parseAbi([
   'function createToken(string name, string symbol, uint256 usdcSeed) external returns (address)',
   'event TokenCreated(address indexed token, address indexed market, address indexed creator, string name, string symbol, uint256 usdcSeed)',
   'function getAllTokens() external view returns (address[])',
-  'function getTokensCount() external view returns (uint256)'
+  'function getTokensCount() external view returns (uint256)',
+  'function tokenToMarket(address token) external view returns (address)'
 ]);
 
 export const ARC_NATIVE_USDC = '0x3600000000000000000000000000000000000000' as const;
