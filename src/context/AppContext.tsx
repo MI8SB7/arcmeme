@@ -581,6 +581,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {}
   }, [profiles]);
 
+  // Fetch all profiles from Supabase on mount
+  useEffect(() => {
+    import('../services/profileService')
+      .then(async ({ getAllProfiles }) => {
+        try {
+          const allProfiles = await getAllProfiles();
+          if (allProfiles.length > 0) {
+            setProfiles(prev => {
+              const next = { ...prev };
+              let changed = false;
+              allProfiles.forEach(p => {
+                if (p.wallet_address) {
+                  const addr = p.wallet_address.toLowerCase();
+                  if (!next[addr] || next[addr].displayName !== p.username) {
+                    next[addr] = {
+                      ...(next[addr] || {}),
+                      walletAddress: p.wallet_address,
+                      displayName: p.username,
+                      avatarSeed: p.username.charAt(0).toUpperCase(),
+                      verificationStatus: next[addr]?.verificationStatus || 'Creator',
+                      joinedAt: next[addr]?.joinedAt || new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                    };
+                    changed = true;
+                  }
+                }
+              });
+              return changed ? next : prev;
+            });
+          }
+        } catch (err) {
+          console.error("Failed to fetch all profiles", err);
+        }
+      })
+      .catch(e => console.error("Failed to load profile service", e));
+  }, []);
+
   const currentUser = isConnected && address ? profiles[address] || null : null;
   const showOnboarding = isConnected && address && !currentUser ? true : false;
 

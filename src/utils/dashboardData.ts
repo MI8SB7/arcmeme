@@ -35,7 +35,8 @@ export const getCreatorDisplayName = (
   profiles: Record<string, UserProfile> = {},
 ) => {
   const creator = (asset as MemeAsset & { creator?: CreatorLike }).creator;
-  const profile = asset.creatorHandle ? profiles[asset.creatorHandle] : undefined;
+  const profileKey = asset.creatorHandle ? asset.creatorHandle.toLowerCase() : '';
+  const profile = profileKey ? profiles[profileKey] : undefined;
   const candidates = [
     creator?.username,
     creator?.displayName,

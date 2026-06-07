@@ -22,6 +22,15 @@ export const getProfileByWallet = async (walletAddress: string): Promise<Profile
   return data as Profile | null;
 };
 
+export const getAllProfiles = async (): Promise<Profile[]> => {
+  const { data, error } = await supabase.from('profiles').select('*');
+  if (error) {
+    console.error('Supabase getAllProfiles error', error);
+    return [];
+  }
+  return data as Profile[];
+};
+
 export const createProfile = async (profile: Omit<Profile, 'id' | 'created_at'>): Promise<Profile | null> => {
   const { data, error } = await supabase.from('profiles').insert([profile]).single();
   if (error) {
