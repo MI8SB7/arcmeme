@@ -121,7 +121,7 @@ export const Trade: React.FC = () => {
       try {
         const trades = await indexerApi.getRecentTrades(marketAddress);
         const uniqueAddresses = new Set<string>();
-        if (asset.creatorHandle) {
+        if (asset?.creatorHandle) {
           uniqueAddresses.add(asset.creatorHandle.toLowerCase());
         }
         trades.forEach(t => {
