@@ -3,7 +3,7 @@ import { DEV_CONTRACTS } from '../config/devContracts';
 import type { ReactNode } from 'react';
 import { useAccount, useBalance, useDisconnect } from 'wagmi';
 import { formatUnits } from 'viem';
-import { type MemeAsset, type ActivityEvent } from '../types';
+import { type MemeAsset } from '../types';
 import { ethers } from 'ethers';
 import { calculateSpotPrice } from '../trading';
 import { insertToken, getAllTokens, deactivateToken as deactivateTokenService, updateTokenStats } from '../services/tokenService';
@@ -65,14 +65,12 @@ interface AppContextType {
   setSearchQuery: (query: string) => void;
   categoryFilter: string | null;
   setCategoryFilter: (category: string | null) => void;
-  activities: ActivityEvent[];
   
   currentUser: UserProfile | null;
   creatorProfiles: Record<string, UserProfile>;
   showOnboarding: boolean;
   createProfile: (displayName: string) => void;
   addToken: (token: MemeAsset) => void;
-  addActivity: (activity: ActivityEvent) => void;
 
   theme: 'dark' | 'light';
   setTheme: (theme: 'dark' | 'light') => void;
@@ -165,49 +163,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return Array.from(existingMap.values());
         });
       })();
-  }, []);
-
-  const [activities, setActivities] = useState<ActivityEvent[]>(() => {
-    try {
-      const stored = localStorage.getItem('arc_activities');
-      let parsed = stored ? JSON.parse(stored) : [];
-      parsed = parsed.filter((act: any) => act && act.tokenName && act.creatorName);
-
-      if (parsed.length === 0 && assets.length > 0) {
-        parsed = assets.map(asset => ({
-          id: asset.id,
-          tokenName: asset.name,
-          creatorName: asset.creatorName,
-          contractAddress: asset.contractAddress,
-          timestamp: new Date(asset.launchDate || Date.now()).getTime()
-        })).slice(0, 50);
-      }
-      return parsed;
-    } catch (e) {
-      return assets.map(asset => ({
-        id: asset.id,
-        tokenName: asset.name,
-        creatorName: asset.creatorName,
-        contractAddress: asset.contractAddress,
-        timestamp: new Date(asset.launchDate || Date.now()).getTime()
-      })).slice(0, 50);
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('arc_activities', JSON.stringify(activities));
-    } catch (e: any) {
-      try {
-        const pruned = activities.slice(0, 10);
-        localStorage.setItem('arc_activities', JSON.stringify(pruned));
-        setActivities(pruned);
-      } catch (retryError) {}
-    }
-  }, [activities]);
-
-  const addActivity = useCallback((activity: ActivityEvent) => {
-    setActivities(prev => [activity, ...prev].slice(0, 50));
   }, []);
 
   useEffect(() => {
@@ -712,14 +667,12 @@ const deactivateToken = useCallback(async (contractAddress: string) => {
     setSearchQuery,
     categoryFilter,
     setCategoryFilter,
-    activities,
     currentUser,
     creatorProfiles: profiles,
     showOnboarding,
     createProfile,
     addToken,
     deactivateToken,
-    addActivity,
     theme,
     setTheme
   }), [
@@ -734,13 +687,11 @@ const deactivateToken = useCallback(async (contractAddress: string) => {
     isAssetsLoading,
     searchQuery,
     categoryFilter,
-    activities,
     currentUser,
     profiles,
     showOnboarding,
     createProfile,
     addToken,
-    addActivity,
     theme
   ]);
 

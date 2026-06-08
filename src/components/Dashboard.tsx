@@ -50,7 +50,7 @@ const TokenLogo: React.FC<{ logo?: string; size?: string }> = ({ logo, size = 'w
 };
 
 export const Dashboard: React.FC = () => {
-  const { assets, activities, isAssetsLoading, creatorProfiles } = useAppContext();
+  const { assets, isAssetsLoading, creatorProfiles } = useAppContext();
   
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -73,29 +73,29 @@ export const Dashboard: React.FC = () => {
   // ──────────────────────────────────────────────────────────
   const recentActivities = useMemo(() => {
     const cutoff = now - FORTY_EIGHT_HOURS_MS;
-    const seenAddresses = new Set<string>();
-
-    return [...activities]
-      .sort((a, b) => b.timestamp - a.timestamp) // Sort newest first
+    
+    return [...assets]
+      .map(asset => {
+        const timestamp = new Date(asset.launchDate || Date.now()).getTime();
+        return {
+          id: asset.id,
+          tokenName: asset.name,
+          creatorName: asset.creatorName,
+          contractAddress: asset.contractAddress,
+          timestamp: timestamp,
+          token: asset // optionally attach the token so we don't have to find it later
+        };
+      })
       .filter((activity) => {
-        // Time gate: only recent launches
         if (activity.timestamp < cutoff) return false;
         
-        // No duplicate entries
-        const addr = activity.contractAddress?.toLowerCase();
-        if (!addr || seenAddresses.has(addr)) return false;
-        seenAddresses.add(addr);
-
-        // Must match a known, visible asset
-        const token = assets.find((t) => t.contractAddress?.toLowerCase() === addr);
-        if (!token) return false;
-        
-        // Exclude if token symbol is missing, empty, or just a dollar sign
+        const token = activity.token;
         if (!token.symbol || token.symbol.trim() === '' || token.symbol.trim() === '$') return false;
         
         return true;
-      });
-  }, [activities, assets, now]);
+      })
+      .sort((a, b) => b.timestamp - a.timestamp); // Sort newest first
+  }, [assets, now]);
 
   // Stable ticker key — prevents re-mount (and animation reset) on every `now` tick.
   // Only changes when the actual set of activities changes.
@@ -221,7 +221,7 @@ export const Dashboard: React.FC = () => {
             className="flex whitespace-nowrap animate-marquee items-center pl-6 hover:[animation-play-state:paused]"
           >
             {recentActivities.concat(recentActivities).map((activity, idx) => {
-              const token = assets.find(t => t.contractAddress?.toLowerCase() === activity.contractAddress?.toLowerCase());
+              const token = activity.token;
               const logo = token?.logo;
               const creatorDisplayName = token 
                 ? getCreatorDisplayName(token, creatorProfiles) 

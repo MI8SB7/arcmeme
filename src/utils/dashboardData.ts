@@ -48,7 +48,19 @@ export const getCreatorDisplayName = (
   ];
 
   const name = candidates.find(hasUsableName);
-  return name ?? formatWalletFallback(asset.creatorHandle);
+  const finalName = name ?? formatWalletFallback(asset.creatorHandle);
+
+  // DEBUG LOGS AS REQUESTED
+  if (asset.creatorHandle && asset.creatorHandle.toLowerCase() !== '0xa3ca9cc33764f8b061b79b9a8a0a00663ea9b181') {
+    console.log("=== NEW TOKEN PROFILE DEBUG ===");
+    console.log("Creator Wallet:", asset.creatorHandle);
+    console.log("CreatorName stored on token:", asset.creatorName);
+    console.log("Profile username (from profile dict):", profile?.walletAddress); // wallet address is only id we have in UserProfile
+    console.log("Profile display_name:", profile?.displayName);
+    console.log("Final rendered creator name:", finalName);
+  }
+
+  return finalName;
 };
 
 export const getRankedTrendingAssets = (assets: MemeAsset[]): RankedTrendingAsset[] => {

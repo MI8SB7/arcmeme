@@ -91,6 +91,8 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
     const dbToken = {
       contract_address: token.contractAddress,
       creator_wallet: token.creatorHandle,
+      creator_name: token.creatorName,
+      creator_avatar: token.creatorAvatar,
       name: token.name,
       symbol: token.symbol,
       description: token.description,

@@ -35,7 +35,7 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
 }
 
 export const CreateToken: React.FC = () => {
-  const { assets, isWalletConnected, usdcBalance, addToken, addActivity, currentUser, walletAddress } = useAppContext();
+  const { assets, isWalletConnected, usdcBalance, addToken, currentUser, walletAddress } = useAppContext();
   
   const [tokenName, setTokenName] = useState('');
   const [symbol, setSymbol] = useState('');
@@ -114,14 +114,6 @@ export const CreateToken: React.FC = () => {
                 
                 addToken(newToken);
                 
-                addActivity({
-                  id: Math.random().toString(36).substr(2, 9),
-                  tokenName: tokenName,
-                  creatorName: currentUser?.displayName || 'Unknown',
-                  contractAddress: newAddress,
-                  timestamp: Date.now()
-                });
-                
                 setStep('success');
               }
               break;
@@ -135,7 +127,7 @@ export const CreateToken: React.FC = () => {
         setError('Transaction succeeded, but frontend crashed while parsing the receipt.');
       }
     }
-  }, [isConfirmed, receipt, step, addActivity, addToken, assets.length, currentUser, description, logoPreview, symbol, tokenName, walletAddress]);
+  }, [isConfirmed, receipt, step, addToken, assets.length, currentUser, description, logoPreview, symbol, tokenName, walletAddress]);
 
   const isDuplicateSymbol = assets.some(
     (asset) => asset.symbol.toLowerCase() === symbol.toLowerCase()

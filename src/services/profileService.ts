@@ -33,7 +33,7 @@ export const getAllProfiles = async (): Promise<Profile[]> => {
 };
 
 export const createProfile = async (profile: Omit<Profile, 'id' | 'created_at'>): Promise<Profile | null> => {
-  const { data, error } = await supabase.from('profiles').insert([profile]).single();
+  const { data, error } = await supabase.from('profiles').insert([profile]).select().single();
   if (error) {
     console.error('Supabase createProfile error', error);
     return null;
@@ -46,6 +46,7 @@ export const updateProfile = async (walletAddress: string, updates: Partial<Prof
     .from('profiles')
     .update(updates)
     .eq('wallet_address', walletAddress)
+    .select()
     .single();
   if (error) {
     console.error('Supabase updateProfile error', error);
