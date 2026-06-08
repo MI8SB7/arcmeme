@@ -222,10 +222,22 @@ export const Dashboard: React.FC = () => {
           >
             {recentActivities.concat(recentActivities).map((activity, idx) => {
               const token = activity.token;
-              const logo = token?.logo;
-              const creatorDisplayName = token 
-                ? getCreatorDisplayName(token, creatorProfiles) 
-                : getCreatorDisplayName({ creatorName: activity.creatorName, creatorHandle: activity.creatorName } as any, creatorProfiles);
+              const logo = token.logo;
+              const creatorDisplayName = getCreatorDisplayName(token, creatorProfiles);
+                
+              const profileKey = token.creatorHandle ? token.creatorHandle.toLowerCase() : '';
+              const profile = profileKey ? creatorProfiles[profileKey] : undefined;
+              
+              // Debug logs as requested
+              if (idx === 0) { // Only log once per render to avoid spam
+                console.log("=== TICKER CREATOR RESOLUTION DEBUG ===");
+                console.log("Token Symbol:", token.symbol);
+                console.log("Creator Wallet:", token.creatorHandle);
+                console.log("Profile Found:", !!profile);
+                console.log("display_name:", profile?.displayName);
+                console.log("username:", profile?.walletAddress);
+                console.log("Final Rendered Name:", creatorDisplayName);
+              }
               
               return (
                 <Link to={`/token/${activity.contractAddress}`} key={`${activity.id}-${idx}`} className="flex items-center space-x-2 mx-8 text-sm hover:opacity-85 transition-opacity">
