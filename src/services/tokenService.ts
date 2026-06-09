@@ -179,8 +179,6 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
     const dbToken = {
       contract_address: token.contractAddress,
       creator_wallet: token.creatorHandle,
-      creator_name: token.creatorName,
-      creator_avatar: token.creatorAvatar,
       name: token.name,
       symbol: token.symbol,
       description: token.description,
@@ -194,8 +192,12 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
     };
     
     console.log("FINAL TOKEN PAYLOAD", dbToken);
+    console.log("SUPABASE INSERT PAYLOAD", dbToken);
     
-    const { error: insertError } = await supabase.from('tokens').insert([dbToken]);
+    const { data, error: insertError } = await supabase.from('tokens').insert([dbToken]).select();
+    console.log("SUPABASE INSERT RESPONSE", data);
+    console.log("SUPABASE INSERT ERROR", insertError);
+    
     if (insertError) {
       console.error('Token save failed', insertError);
     } else {

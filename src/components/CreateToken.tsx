@@ -111,6 +111,8 @@ export const CreateToken: React.FC = () => {
                   price: 0,
                   txHash: receipt.transactionHash,
                 };
+                console.log("TOKEN CREATE START");
+                console.log("TOKEN OBJECT", newToken);
                 
                 addToken(newToken);
                 

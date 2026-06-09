@@ -645,6 +645,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addToken = useCallback((token: MemeAsset) => {
     // 1. Perform side-effect outside the pure state updater
+    console.log("CALLING insertToken");
     insertToken(token).catch(err => console.error('Token save failed', err));
 
     // 2. Queue state update
