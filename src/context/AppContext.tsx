@@ -164,21 +164,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
         });
         const newAssets = Array.from(existingMap.values());
-        console.log('assets updated (count):', newAssets.length);
-        console.log('dashboard asset count:', newAssets.length);
+        
+        console.log("TOKENS FROM SUPABASE", supabaseTokens.length);
+        console.log("TOKENS FROM LOCALSTORAGE", prev.length);
+        console.log("FINAL MERGED TOKENS", newAssets.length);
+        
         return newAssets;
       });
 
       // Subscribe to real-time inserts
       unsubscribe = subscribeToNewTokens((newToken) => {
-        console.log('=== SYNC DEBUG ===');
-        console.log('token inserted (realtime):', newToken.symbol);
         setAssets(prev => {
           const exists = prev.some(a => a.contractAddress.toLowerCase() === newToken.contractAddress.toLowerCase());
           if (!exists) {
             const newAssets = [...prev, newToken];
-            console.log('assets updated (realtime count):', newAssets.length);
-            console.log('dashboard asset count:', newAssets.length);
+            console.log("REALTIME STATE UPDATED");
             return newAssets;
           }
           return prev;

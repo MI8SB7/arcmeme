@@ -50,20 +50,27 @@ export const getAllTokens = async (): Promise<MemeAsset[]> => {
 
 /** Subscribe to new tokens inserted into Supabase for realtime UI updates */
 export const subscribeToNewTokens = (callback: (asset: MemeAsset) => void) => {
+  console.log("REALTIME SUBSCRIBING");
   const channel = supabase
     .channel('public:tokens')
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'tokens' },
       (payload) => {
+        console.log("REALTIME INSERT RECEIVED", payload);
         if (payload.new && payload.new.is_active !== false) {
-          console.log("=== TOKEN IMAGE LENGTH DEBUG (REALTIME) ===");
-          console.log(`Token ${payload.new.symbol} payload.new.logo_url?.length:`, payload.new.logo_url?.length || 0);
           callback(mapRowToAsset(payload.new));
         }
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        console.log("REALTIME SUBSCRIBED");
+      }
+      if (err) {
+        console.error("REALTIME ERROR", err);
+      }
+    });
 
   return () => {
     supabase.removeChannel(channel);
@@ -90,12 +97,20 @@ export const uploadTokenImage = async (base64Data: string, tokenId: string): Pro
     const blob = base64ToBlob(base64Data);
     const fileName = `${tokenId}-${Date.now()}.webp`;
     
-    const { error: uploadError } = await supabase.storage
+    console.log("UPLOAD START");
+    console.log("Bucket:", 'token-images');
+    console.log("File path:", fileName);
+    console.log("Blob size:", blob.size);
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
       .from('token-images')
       .upload(fileName, blob, {
         contentType: 'image/webp',
         upsert: false
       });
+      
+    console.log("UPLOAD RESPONSE", uploadData);
+    console.log("UPLOAD ERROR", uploadError);
       
     if (uploadError) {
       console.log('UPLOAD RESULT: Failed', uploadError);
