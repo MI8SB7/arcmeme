@@ -6,7 +6,7 @@ import { formatUnits } from 'viem';
 import { type MemeAsset } from '../types';
 import { ethers } from 'ethers';
 import { calculateSpotPrice } from '../trading';
-import { insertToken, getAllTokens, deactivateToken as deactivateTokenService, updateTokenStats } from '../services/tokenService';
+import { insertToken, getAllTokens, deactivateToken as deactivateTokenService, updateTokenStats, subscribeToNewTokens } from '../services/tokenService';
 
 // ---------------------------------------------------------------------------
 // Module-level caches — persist for the browser session lifetime.
@@ -144,25 +144,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Log asset counts for verification
   useEffect(() => {
-      console.log('Total assets loaded from arc_registry:', assets.length);
-      console.log('Visible assets after DEV_CONTRACTS filtering:', visibleAssets.length);
-      // Load tokens from Supabase once on mount
-      (async () => {
-        const supabaseTokens = await getAllTokens();
-        console.log('Token loaded from Supabase:', supabaseTokens.length);
-        // Merge with existing assets, dedup by contract_address
-        setAssets(prev => {
-          const existingMap = new Map(prev.map(a => [a.contractAddress?.toLowerCase(), a]));
-          supabaseTokens.forEach(tok => {
-            const addr = tok.contractAddress?.toLowerCase();
-            if (addr) {
-              // Always prefer Supabase tokens to fix logo persistence issues
-              existingMap.set(addr, tok as any);
-            }
-          });
-          return Array.from(existingMap.values());
+    console.log('Total assets loaded from arc_registry:', assets.length);
+    console.log('Visible assets after DEV_CONTRACTS filtering:', visibleAssets.length);
+    let unsubscribe: () => void;
+    
+    (async () => {
+      const supabaseTokens = await getAllTokens();
+      console.log('=== SYNC DEBUG ===');
+      console.log('tokens fetched (count):', supabaseTokens.length);
+      
+      // Merge with existing assets, dedup by contract_address
+      setAssets(prev => {
+        const existingMap = new Map(prev.map(a => [a.contractAddress?.toLowerCase(), a]));
+        supabaseTokens.forEach(tok => {
+          const addr = tok.contractAddress?.toLowerCase();
+          if (addr) {
+            // Always prefer Supabase tokens to fix logo persistence issues
+            existingMap.set(addr, tok as any);
+          }
         });
-      })();
+        const newAssets = Array.from(existingMap.values());
+        console.log('assets updated (count):', newAssets.length);
+        console.log('dashboard asset count:', newAssets.length);
+        return newAssets;
+      });
+
+      // Subscribe to real-time inserts
+      unsubscribe = subscribeToNewTokens((newToken) => {
+        console.log('=== SYNC DEBUG ===');
+        console.log('token inserted (realtime):', newToken.symbol);
+        setAssets(prev => {
+          const exists = prev.some(a => a.contractAddress.toLowerCase() === newToken.contractAddress.toLowerCase());
+          if (!exists) {
+            const newAssets = [...prev, newToken];
+            console.log('assets updated (realtime count):', newAssets.length);
+            console.log('dashboard asset count:', newAssets.length);
+            return newAssets;
+          }
+          return prev;
+        });
+      });
+    })();
+      
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
