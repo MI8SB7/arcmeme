@@ -493,24 +493,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // The effect runs once the wallet address is known.
   useEffect(() => {
     if (!isConnected || !address) return;
-    // Dynamically import to keep the initial bundle small
     import('../services/profileService')
-      .then(async ({ getProfileByWallet, createProfile }) => {
+      .then(async ({ getProfileByWallet }) => {
         const lowerAddress = address.toLowerCase();
         try {
           const profile = await getProfileByWallet(lowerAddress);
-          if (!profile) {
-            // Simple default username – can be refined later
-            const defaultUsername = `user_${lowerAddress.slice(2, 8)}`;
-            await createProfile({
-              wallet_address: lowerAddress,
-              username: defaultUsername,
-              avatar_url: '',
-              bio: ''
-            });
-            console.log('🟢 Created profile for', lowerAddress);
-          } else {
+          if (profile) {
             console.log('🔵 Profile already exists for', lowerAddress);
+            setProfiles(prev => {
+              if (prev[address]) return prev;
+              const targetName = profile.display_name || profile.username;
+              return {
+                ...prev,
+                [address]: {
+                  walletAddress: profile.wallet_address,
+                  displayName: targetName,
+                  avatarSeed: targetName.charAt(0).toUpperCase(),
+                  verificationStatus: 'Creator',
+                  joinedAt: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+                }
+              };
+            });
           }
         } catch (err) {
           console.error('Profile service error', err);
@@ -579,11 +582,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const createProfile = useCallback(async (displayName: string) => {
     if (!address) return;
     
+    console.log("=== ONBOARDING DEBUG ===");
+    console.log("Entered Name:", displayName);
+    console.log("Wallet Address:", address);
+    
+    const lowerAddress = address.toLowerCase();
+    const defaultUsername = `user_${lowerAddress.slice(2, 8)}`;
+    
+    const payload = {
+      wallet_address: lowerAddress,
+      username: defaultUsername,
+      display_name: displayName,
+      avatar_url: '',
+      bio: ''
+    };
+    
+    console.log("Payload sent to createProfile():", payload);
+    
     try {
-      const { updateProfile } = await import('../services/profileService');
-      await updateProfile(address.toLowerCase(), { display_name: displayName });
+      const { createProfile: supabaseCreateProfile } = await import('../services/profileService');
+      console.log("Payload sent to Supabase (profiles insert):", payload);
+      await supabaseCreateProfile(payload);
     } catch (err) {
-      console.error("Failed to update profile in database", err);
+      console.error("Failed to create profile in database", err);
     }
 
     const newProfile: UserProfile = {
