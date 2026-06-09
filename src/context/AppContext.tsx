@@ -143,23 +143,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.log('=== SYNC DEBUG ===');
       console.log('tokens fetched (count):', supabaseTokens.length);
       
-      // Merge with existing assets, dedup by contract_address
-      setAssets(prev => {
-        const existingMap = new Map(prev.map(a => [a.contractAddress?.toLowerCase(), a]));
-        supabaseTokens.forEach(tok => {
-          const addr = tok.contractAddress?.toLowerCase();
-          if (addr) {
-            // Always prefer Supabase tokens to fix logo persistence issues
-            existingMap.set(addr, tok as any);
-          }
-        });
-        const newAssets = Array.from(existingMap.values());
-        
+      // Set assets directly from Supabase, treating it as the single source of truth.
+      // This eliminates stale localStorage tokens if they were deleted from the database.
+      setAssets(() => {
         console.log("TOKENS FROM SUPABASE", supabaseTokens.length);
-        console.log("TOKENS FROM LOCALSTORAGE", prev.length);
-        console.log("FINAL MERGED TOKENS", newAssets.length);
-        
-        return newAssets;
+        return supabaseTokens as any[];
       });
 
       // Subscribe to real-time inserts
@@ -248,6 +236,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         for (const tokenAddr of tokenAddresses) {
           // Guard: skip dev/test orphan tokens whose factory entries may be invalid.
           if (DEV_CONTRACTS.includes(tokenAddr.toLowerCase())) continue;
+
+          const existing = assetsRef.current.find(a => a.contractAddress.toLowerCase() === tokenAddr.toLowerCase());
+          
+          if (!existing) {
+            console.log("BLOCKCHAIN TOKEN IGNORED", tokenAddr);
+            continue;
+          }
 
           // -----------------------------------------------------------------
           // STATIC CACHE — name, symbol, marketAddr are immutable after
@@ -371,11 +366,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // Update reserves cache with fresh trade data for next cycle.
             reservesCache.set(cacheKey, { usdc: reserveUSDC, token: reserveToken, trades: allTrades });
           }
-          // NOTE: Supabase trade_events (written by BuyPanel/SellPanel) is the
-          // canonical source of truth for charts and history.
-          // localStorage arc_trades_* is NOT written here.
-
-          const existing = assetsRef.current.find(a => a.contractAddress.toLowerCase() === tokenAddr.toLowerCase());
 
           const creatorMeta = creatorsMap.get(tokenAddr.toLowerCase());
           const usdcSeed = creatorMeta ? Number(ethers.formatUnits(creatorMeta.usdcSeed, 6)) : 10;
@@ -399,25 +389,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const initialPrice = usdcSeed / 600_000_000;
           const priceChangePercent = initialPrice > 0 ? ((currentPrice - initialPrice) / initialPrice) * 100 : 0;
 
+          console.log("STATS UPDATED FOR EXISTING TOKEN", tokenAddr);
           updatedAssets.push({
-            id: existing?.id || Math.random().toString(36).substr(2, 9),
+            id: existing.id,
             name,
             symbol,
             contractAddress: tokenAddr,
             marketAddress: marketAddr,
-            logo: existing?.logo || '🚀',
-            category: existing?.category || 'Community',
-            verificationStatus: existing?.verificationStatus || 'New',
-            description: existing?.description || `Meme token ${name} (${symbol}) launched on Arc.`,
-            creatorName: existing?.creatorName || (creatorWallet.slice(0, 6) + '...' + creatorWallet.slice(-4)),
+            logo: existing.logo,
+            category: existing.category,
+            verificationStatus: existing.verificationStatus,
+            description: existing.description,
+            creatorName: existing.creatorName,
             creatorHandle: creatorWallet,
-            creatorAvatar: existing?.creatorAvatar || '👤',
-            likes: existing?.likes || 0,
-            views: existing?.views || 0,
-            rank: existing?.rank || updatedAssets.length + 1,
-            hotness: existing?.hotness || 0,
-            followers: existing?.followers || 0,
-            launchDate: existing?.launchDate || new Date().toISOString(),
+            creatorAvatar: existing.creatorAvatar,
+            likes: existing.likes,
+            views: existing.views,
+            rank: existing.rank,
+            hotness: existing.hotness,
+            followers: existing.followers,
+            launchDate: existing.launchDate,
             txHash: launchTxHash,
             
             // Computed dynamic stats
@@ -432,7 +423,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           // Sync dynamic stats to Supabase if they changed
           if (
-            !existing ||
             existing.marketCap !== marketCap ||
             existing.liquidity !== liquidity ||
             existing.holderCount !== holderCount ||
@@ -456,6 +446,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const fingerprint = (arr: MemeAsset[]) =>
             arr.map(a => `${a.contractAddress}:${a.price?.toFixed(10)}:${a.marketCap?.toFixed(2)}:${a.holderCount}:${a.tradeCount}`).join('|');
           if (active) {
+            console.log("ASSET SOURCE", "syncOnChainData", updatedAssets.length);
             setAssets(prev => {
               const mergedAssets = [...prev];
               for (const updated of updatedAssets) {
@@ -475,8 +466,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     // keep rank stable if possible, or update it
                     rank: updated.rank,
                   };
-                } else {
-                  mergedAssets.push(updated);
                 }
               }
               
