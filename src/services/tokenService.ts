@@ -208,6 +208,7 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
     
     console.log("FINAL TOKEN PAYLOAD", dbToken);
     console.log("SUPABASE INSERT PAYLOAD", dbToken);
+    console.log("NEW TOKEN CREATED", dbToken);
     
     const { data, error: insertError } = await supabase.from('tokens').insert([dbToken]).select();
     console.log("SUPABASE INSERT RESPONSE", data);

@@ -113,6 +113,7 @@ export const CreateToken: React.FC = () => {
                 };
                 console.log("TOKEN CREATE START");
                 console.log("TOKEN OBJECT", newToken);
+                console.log("STATE TOKEN INSERTED", newToken);
                 
                 addToken(newToken);
                 

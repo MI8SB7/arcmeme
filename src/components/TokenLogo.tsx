@@ -15,7 +15,7 @@ export const TokenLogo: React.FC<TokenLogoProps> = ({
 }) => {
   console.log("=== TOKEN LOGO DEBUG ===");
   console.log("Token:", symbol);
-  console.log("Logo:", logo);
+  console.log("RENDERED TOKEN LOGO", logo);
   console.log("Logo Type:", typeof logo);
 
   const isImage =

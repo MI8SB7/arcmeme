@@ -115,17 +115,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const stored = localStorage.getItem('arc_registry');
       if (stored) {
-        let parsed = JSON.parse(stored);
-        parsed = parsed.filter((a: any) => {
-          const addr = a.contractAddress || a.address || '';
-          return !addr.includes('0xMOCK') && !addr.includes('1234567890abcdef');
-        }).map((a: any) => {
-          return {
-            ...a,
-            contractAddress: a.contractAddress || a.address
-          };
-        });
-        return parsed;
+        return JSON.parse(stored);
       }
       return [];
     } catch {
@@ -175,13 +165,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Subscribe to real-time inserts
       unsubscribe = subscribeToNewTokens((newToken) => {
         setAssets(prev => {
-          const exists = prev.some(a => a.contractAddress.toLowerCase() === newToken.contractAddress.toLowerCase());
-          if (!exists) {
+          const existingIndex = prev.findIndex(a => a.contractAddress.toLowerCase() === newToken.contractAddress.toLowerCase());
+          
+          if (existingIndex >= 0) {
+            // Replace existing token (removes stale Base64 logo, updates to Supabase HTTPS)
+            const newAssets = [...prev];
+            newAssets[existingIndex] = newToken;
+            console.log("REALTIME STATE UPDATED (REPLACED EXISTING)");
+            return newAssets;
+          } else {
+            // Append new token
             const newAssets = [...prev, newToken];
-            console.log("REALTIME STATE UPDATED");
+            console.log("REALTIME STATE UPDATED (ADDED NEW)");
             return newAssets;
           }
-          return prev;
         });
       });
     })();
