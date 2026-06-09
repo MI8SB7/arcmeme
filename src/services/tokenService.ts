@@ -38,6 +38,13 @@ export const getAllTokens = async (): Promise<MemeAsset[]> => {
   }
   // Only return tokens that are active (default true).
   const rows = (data as any[]).filter(row => row.is_active !== false);
+  
+  // Debug log for logo_url lengths
+  console.log("=== TOKEN IMAGE LENGTH DEBUG (INITIAL FETCH) ===");
+  rows.forEach(row => {
+    console.log(`Token ${row.symbol} fetchedToken.logo_url?.length:`, row.logo_url?.length || 0);
+  });
+  
   return rows.map(mapRowToAsset);
 };
 
@@ -50,6 +57,8 @@ export const subscribeToNewTokens = (callback: (asset: MemeAsset) => void) => {
       { event: 'INSERT', schema: 'public', table: 'tokens' },
       (payload) => {
         if (payload.new && payload.new.is_active !== false) {
+          console.log("=== TOKEN IMAGE LENGTH DEBUG (REALTIME) ===");
+          console.log(`Token ${payload.new.symbol} payload.new.logo_url?.length:`, payload.new.logo_url?.length || 0);
           callback(mapRowToAsset(payload.new));
         }
       }
@@ -59,6 +68,49 @@ export const subscribeToNewTokens = (callback: (asset: MemeAsset) => void) => {
   return () => {
     supabase.removeChannel(channel);
   };
+};
+
+/** Convert a Base64 Data URI to a Blob */
+const base64ToBlob = (base64URI: string): Blob => {
+  const [header, data] = base64URI.split(',');
+  const mimeMatch = header.match(/:(.*?);/);
+  const mimeType = mimeMatch ? mimeMatch[1] : 'image/webp';
+  const binaryString = atob(data);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mimeType });
+};
+
+/** Uploads a base64 image to Supabase Storage and returns the public URL */
+export const uploadTokenImage = async (base64Data: string, tokenId: string): Promise<string> => {
+  try {
+    const blob = base64ToBlob(base64Data);
+    const fileName = `${tokenId}-${Date.now()}.webp`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('token-images')
+      .upload(fileName, blob, {
+        contentType: 'image/webp',
+        upsert: false
+      });
+      
+    if (uploadError) {
+      console.error('Failed to upload token image to Supabase Storage:', uploadError);
+      return ''; // Return empty string to gracefully fall back
+    }
+    
+    const { data: urlData } = supabase.storage
+      .from('token-images')
+      .getPublicUrl(fileName);
+      
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('Error uploading token image:', error);
+    return '';
+  }
 };
 
 /** Update token dynamic stats (price, marketCap, liquidity, holderCount, volume24h) */
@@ -107,6 +159,18 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
       console.log('Token already exists');
       return;
     }
+    
+    // Process base64 logo if present
+    let finalLogoUrl = token.logo;
+    if (finalLogoUrl && finalLogoUrl.startsWith('data:image/')) {
+      console.log('Uploading base64 image to Supabase Storage...');
+      const uploadedUrl = await uploadTokenImage(finalLogoUrl, token.id || token.contractAddress);
+      if (uploadedUrl) {
+        finalLogoUrl = uploadedUrl;
+        console.log('Successfully uploaded image, new URL:', finalLogoUrl);
+      }
+    }
+
     const dbToken = {
       contract_address: token.contractAddress,
       creator_wallet: token.creatorHandle,
@@ -115,7 +179,7 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
       name: token.name,
       symbol: token.symbol,
       description: token.description,
-      logo_url: token.logo,
+      logo_url: finalLogoUrl,
       // Dynamic stats
       market_cap: token.marketCap,
       liquidity: token.liquidity,
