@@ -7,6 +7,7 @@ import { formatDisplaySymbol } from '../utils/formatSymbol';
 import { formatCompactBalance } from '../trading';
 import { useAppContext } from '../context/AppContext';
 import { getCreatorDisplayName } from '../utils/dashboardData';
+import { TokenLogo } from './TokenLogo';
 
 interface AssetCardProps {
   asset?: MemeAsset;
@@ -77,12 +78,8 @@ export const AssetCard: React.FC<AssetCardProps> = ({ asset, showRank, rank, loa
       )}
 
       <div className="flex items-center space-x-4 mb-4 relative z-10">
-        <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border">
-          {typeof asset.logo === 'string' && asset.logo.startsWith('data:image') ? (
-            <img src={asset.logo} alt="Logo" className="w-full h-full object-cover" />
-          ) : (
-            <span className="text-xl shrink-0">{asset.logo || '🚀'}</span>
-          )}
+        <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
+          <TokenLogo logo={asset.logo} symbol={asset.symbol} size="w-10 h-10" />
         </div>
         <div className="flex flex-col items-start">
           <span className="text-sm font-mono text-accent font-semibold">{formatDisplaySymbol(asset.symbol)}</span>

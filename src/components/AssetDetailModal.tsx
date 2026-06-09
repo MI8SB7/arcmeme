@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext';
 import { AssetCard } from './AssetCard';
 import { getCreatorDisplayName } from '../utils/dashboardData';
 import { formatDisplaySymbol } from '../utils/formatSymbol';
+import { TokenLogo } from './TokenLogo';
 
 export const AssetDetailModal: React.FC = () => {
   const { selectedAsset, setSelectedAsset, assets, creatorProfiles } = useAppContext();
@@ -26,8 +27,8 @@ export const AssetDetailModal: React.FC = () => {
         {/* Header */}
         <div className="sticky top-0 z-20 flex justify-between items-start p-6 bg-card/95 border-b border-border backdrop-blur-md">
           <div className="flex items-center space-x-4">
-            <div className="text-5xl w-16 h-16 flex items-center justify-center">
-              {selectedAsset.logo.startsWith('data:image') ? <img src={selectedAsset.logo} alt="Logo" className="w-full h-full object-cover rounded-full" /> : selectedAsset.logo}
+            <div className="w-16 h-16 flex items-center justify-center shrink-0">
+              <TokenLogo logo={selectedAsset.logo} symbol={selectedAsset.symbol} size="w-full h-full" />
             </div>
             <div>
               <div className="flex flex-col items-start">

@@ -8,18 +8,9 @@ import { formatWalletFallback, getCreatorDisplayName } from '../utils/dashboardD
 import { usePortfolio } from '../hooks/usePortfolio';
 import { formatUnits } from 'viem';
 import { formatCompactBalance, TOKEN_DECIMALS } from '../trading';
+import { TokenLogo } from './TokenLogo';
 import usdcLogo from '../assets/usdc.png';
 
-const TokenLogo: React.FC<{ logo: string; symbol: string }> = ({ logo, symbol }) => {
-  if (typeof logo === 'string' && logo.startsWith('data:image')) {
-    return <img src={logo} alt={symbol} className="w-8 h-8 rounded-full object-cover shrink-0" />;
-  }
-  return (
-    <div className="w-8 h-8 rounded-full bg-border/50 border border-border/80 flex items-center justify-center text-sm shrink-0 select-none">
-      {logo || '🚀'}
-    </div>
-  );
-};
 
 export const CreatorProfile: React.FC = () => {
   const { address } = useParams<{ address: string }>();
@@ -239,7 +230,7 @@ export const CreatorProfile: React.FC = () => {
                             onClick={() => navigate(`/trade/${h.asset.contractAddress}`)}
                           >
                             <td className="py-4">
-                              <TokenLogo logo={h.asset.logo} symbol={h.asset.symbol} />
+                              <TokenLogo logo={h.asset.logo} symbol={h.asset.symbol} size="w-8 h-8" />
                             </td>
                             <td className="py-4 font-bold text-text">
                               <div className="flex flex-col min-w-0">

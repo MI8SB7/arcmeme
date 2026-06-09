@@ -6,6 +6,7 @@ import { formatPrice } from '../utils/formatPrice';
 import { formatDisplaySymbol } from '../utils/formatSymbol';
 import { formatCompactBalance } from '../trading';
 import { getCreatorDisplayName, getRankedTrendingAssets } from '../utils/dashboardData';
+import { TokenLogo } from './TokenLogo';
 
 const SkeletonValue: React.FC = () => (
   <span className="inline-block animate-pulse bg-border/40 rounded h-5 w-16 align-middle" />
@@ -114,13 +115,8 @@ export const FeaturedCarousel: React.FC = () => {
             
             {/* Logo, Name, Symbol, Creator (Left) */}
             <div className="flex items-center gap-4 flex-1 min-w-0">
-              {/* Logo */}
               <div className="w-16 h-16 md:w-20 md:h-20 flex items-center justify-center bg-card border border-border rounded-2xl overflow-hidden shrink-0 shadow-sm group-hover/card:scale-105 transition-transform duration-500">
-                {typeof featuredAsset.logo === 'string' && featuredAsset.logo.startsWith('data:image') ? (
-                  <img src={featuredAsset.logo} alt="Logo" className="w-full h-full object-cover" />
-                ) : (
-                  <span className="text-3xl md:text-4xl shrink-0">{featuredAsset.logo || '🚀'}</span>
-                )}
+                <TokenLogo logo={featuredAsset.logo} symbol={featuredAsset.symbol} size="w-full h-full" />
               </div>
               
               {/* Name, Symbol, Creator Badge */}

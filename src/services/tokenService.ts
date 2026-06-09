@@ -98,7 +98,7 @@ export const uploadTokenImage = async (base64Data: string, tokenId: string): Pro
       });
       
     if (uploadError) {
-      console.error('Failed to upload token image to Supabase Storage:', uploadError);
+      console.log('UPLOAD RESULT: Failed', uploadError);
       return ''; // Return empty string to gracefully fall back
     }
     
@@ -106,9 +106,10 @@ export const uploadTokenImage = async (base64Data: string, tokenId: string): Pro
       .from('token-images')
       .getPublicUrl(fileName);
       
+    console.log('PUBLIC URL', urlData.publicUrl);
     return urlData.publicUrl;
   } catch (error) {
-    console.error('Error uploading token image:', error);
+    console.log('UPLOAD RESULT: Exception', error);
     return '';
   }
 };
@@ -163,11 +164,15 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
     // Process base64 logo if present
     let finalLogoUrl = token.logo;
     if (finalLogoUrl && finalLogoUrl.startsWith('data:image/')) {
-      console.log('Uploading base64 image to Supabase Storage...');
+      console.log("BASE64 LENGTH", finalLogoUrl.length);
+      console.log("UPLOAD STARTED");
       const uploadedUrl = await uploadTokenImage(finalLogoUrl, token.id || token.contractAddress);
       if (uploadedUrl) {
         finalLogoUrl = uploadedUrl;
         console.log('Successfully uploaded image, new URL:', finalLogoUrl);
+      } else {
+        console.log('Upload failed, stripping Base64 from payload to prevent realtime crashes');
+        finalLogoUrl = ''; // DO NOT fall back to Base64
       }
     }
 
@@ -187,6 +192,9 @@ export const insertToken = async (token: MemeAsset): Promise<void> => {
       volume_24h: token.volume24h,
       is_active: true,
     };
+    
+    console.log("FINAL TOKEN PAYLOAD", dbToken);
+    
     const { error: insertError } = await supabase.from('tokens').insert([dbToken]);
     if (insertError) {
       console.error('Token save failed', insertError);

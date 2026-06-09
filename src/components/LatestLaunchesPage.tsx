@@ -6,36 +6,9 @@ import { formatPrice } from '../utils/formatPrice';
 import { formatDisplaySymbol } from '../utils/formatSymbol';
 import { formatCompactBalance } from '../trading';
 import { getCreatorDisplayName } from '../utils/dashboardData';
+import { TokenLogo } from './TokenLogo';
 
-/**
- * Renders a token logo with reliable fallback.
- */
-const TokenLogo: React.FC<{ logo?: string; size?: string }> = ({ logo, size = 'w-10 h-10' }) => {
-  const isImage =
-    typeof logo === 'string' &&
-    logo.length > 0 &&
-    (logo.startsWith('data:image') || logo.startsWith('http') || logo.startsWith('/'));
 
-  if (isImage) {
-    return (
-      <img
-        src={logo}
-        alt="Token"
-        className={`${size} rounded-full object-cover shrink-0`}
-        onError={(e) => {
-          const target = e.currentTarget;
-          target.style.display = 'none';
-          const fallback = document.createElement('span');
-          fallback.className = 'text-xl';
-          fallback.textContent = '🚀';
-          target.parentElement?.appendChild(fallback);
-        }}
-      />
-    );
-  }
-
-  return <span className="text-xl shrink-0">{logo && logo.length > 0 ? logo : '🚀'}</span>;
-};
 
 export const LatestLaunchesPage: React.FC = () => {
   const { assets, isAssetsLoading, creatorProfiles } = useAppContext();
@@ -150,8 +123,8 @@ export const LatestLaunchesPage: React.FC = () => {
             >
               {/* Logo + Name + Symbol */}
               <div className="flex items-center space-x-4 mb-4 relative z-10">
-                <div className="w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
-                  <TokenLogo logo={asset.logo} size="w-10 h-10" />
+                <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
+                  <TokenLogo logo={asset.logo} symbol={asset.symbol} size="w-10 h-10" />
                 </div>
                 <div className="flex flex-col items-start min-w-0">
                   <span className="text-sm font-mono text-accent font-semibold truncate max-w-[140px]">

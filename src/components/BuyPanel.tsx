@@ -13,6 +13,7 @@ import {
   calculateMarketCap
 } from '../trading';
 import { indexerApi } from '../utils/indexerApi';
+import { TokenLogo } from './TokenLogo';
 import usdcLogo from '../assets/usdc.png';
 
 const MARKET_ABI = parseAbi([
@@ -30,22 +31,6 @@ const ERC20_ABI = parseAbi([
 const UsdcLogo: React.FC = () => (
   <img src={usdcLogo} alt="USDC" className="w-6 h-6 rounded-full shrink-0" />
 );
-
-interface TokenLogoProps {
-  logo: string;
-  symbol: string;
-}
-
-const TokenLogo: React.FC<TokenLogoProps> = ({ logo, symbol }) => {
-  if (typeof logo === 'string' && logo.startsWith('data:image')) {
-    return <img src={logo} alt={symbol} className="w-6 h-6 rounded-full object-cover shrink-0" />;
-  }
-  return (
-    <div className="w-6 h-6 rounded-full bg-cardLight border border-border flex items-center justify-center text-xs shrink-0 select-none text-muted">
-      {logo || '🚀'}
-    </div>
-  );
-};
 
 interface BuyPanelProps {
   marketAddress: string;
@@ -369,9 +354,9 @@ export const BuyPanel: React.FC<BuyPanelProps> = ({
           <div className="text-3xl font-bold text-text overflow-hidden text-ellipsis whitespace-nowrap">
             {usdcInput ? formatCompactBalance(formatUnits(tokensOut, Number(TOKEN_DECIMALS))) : '0.00'}
           </div>
-          <div className="flex items-center space-x-2 bg-border/50 px-3 py-1.5 rounded-xl ml-2 shrink-0">
-            <TokenLogo logo={tokenLogo} symbol={tokenSymbol} />
-            <span className="font-bold text-text">{tokenSymbol}</span>
+          <div className="flex items-center space-x-2 bg-cardLight border border-border px-3 py-1.5 rounded-xl whitespace-nowrap overflow-hidden">
+            <TokenLogo logo={tokenLogo} symbol={tokenSymbol} size="w-6 h-6" />
+            <span className="font-semibold text-text truncate max-w-[80px] sm:max-w-[120px]">{tokenSymbol}</span>
           </div>
         </div>
       </div>

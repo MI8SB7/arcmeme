@@ -9,6 +9,7 @@ import { formatPrice } from '../utils/formatPrice';
 import { getCreatorDisplayName, getRankedTrendingAssets } from '../utils/dashboardData';
 import { formatDisplaySymbol } from '../utils/formatSymbol';
 import { formatCompactBalance } from '../trading';
+import { TokenLogo } from './TokenLogo';
 
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
@@ -16,38 +17,7 @@ const SkeletonValue: React.FC = () => (
   <span className="inline-block animate-pulse bg-border/40 rounded h-4 w-16 align-middle" />
 );
 
-/**
- * Renders a token logo with reliable fallback.
- * Handles: data:image/*, http(s) URLs, emoji strings, undefined, empty.
- */
-const TokenLogo: React.FC<{ logo?: string; size?: string }> = ({ logo, size = 'w-5 h-5' }) => {
-  const isImage =
-    typeof logo === 'string' &&
-    logo.length > 0 &&
-    (logo.startsWith('data:image') || logo.startsWith('http') || logo.startsWith('/'));
 
-  if (isImage) {
-    return (
-      <img
-        src={logo}
-        alt="Token"
-        className={`${size} rounded-full object-cover shrink-0`}
-        onError={(e) => {
-          // Replace broken image with fallback emoji
-          const target = e.currentTarget;
-          target.style.display = 'none';
-          const fallback = document.createElement('span');
-          fallback.className = 'text-sm';
-          fallback.textContent = '🚀';
-          target.parentElement?.appendChild(fallback);
-        }}
-      />
-    );
-  }
-
-  // Emoji or missing — always show something
-  return <span className="text-sm shrink-0">{logo && logo.length > 0 ? logo : '🚀'}</span>;
-};
 
 export const Dashboard: React.FC = () => {
   const { assets, isAssetsLoading, creatorProfiles } = useAppContext();
@@ -335,7 +305,7 @@ export const Dashboard: React.FC = () => {
                   {/* Logo + Name + Symbol */}
                   <div className="flex items-center space-x-4 mb-4 relative z-10">
                     <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
-                      <TokenLogo logo={asset.logo} size="w-10 h-10" />
+                      <TokenLogo logo={asset.logo} symbol={asset.symbol} size="w-10 h-10" />
                     </div>
                     <div className="flex flex-col items-start min-w-0">
                       <span className="text-sm font-mono text-accent font-semibold truncate max-w-[120px]">{formatDisplaySymbol(asset.symbol)}</span>
@@ -414,7 +384,7 @@ export const Dashboard: React.FC = () => {
                     <div className="flex items-center space-x-4">
                       <div className="text-2xl w-10 text-center text-muted font-bold">#{idx + 1}</div>
                       <div className="text-4xl w-10 h-10 flex items-center justify-center bg-border/20 rounded-full overflow-hidden border border-border shrink-0">
-                        <TokenLogo logo={asset.logo} size="w-10 h-10" />
+                        <TokenLogo logo={asset.logo} symbol={asset.symbol} size="w-10 h-10" />
                       </div>
                       <div>
                         <span className="text-sm font-mono text-accent font-semibold">{formatDisplaySymbol(asset.symbol)}</span>
